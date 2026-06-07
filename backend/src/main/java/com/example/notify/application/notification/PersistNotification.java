@@ -19,9 +19,7 @@ public final class PersistNotification {
         if (event == null) {
             throw new IllegalArgumentException("notification event must not be null");
         }
-        if (!records.contains(event.notificationId())) {
-            records.add(NotificationRecord.from(event));
-        }
+        records.addIfAbsent(NotificationRecord.from(event));
     }
 
 }

@@ -1,6 +1,7 @@
 package com.example.notify.engine.matching;
 
 import com.example.notify.domain.strategy.RuleAst;
+import com.example.notify.domain.strategy.RuleConnector;
 import com.example.notify.domain.strategy.RuleOperator;
 import java.util.List;
 
@@ -9,7 +10,7 @@ public final class RuleAstEvaluator {
     public boolean matches(RuleAst ast, EventSnapshot snapshot) {
         return switch (ast) {
             case RuleAst.Comparison comparison -> compare(comparison, snapshot);
-            case RuleAst.Group group -> group.connector() == com.example.notify.domain.strategy.RuleConnector.AND
+            case RuleAst.Group group -> group.connector() == RuleConnector.AND
                 ? group.children().stream().allMatch(child -> matches(child, snapshot))
                 : group.children().stream().anyMatch(child -> matches(child, snapshot));
             case RuleAst.Not not -> !matches(not.child(), snapshot);

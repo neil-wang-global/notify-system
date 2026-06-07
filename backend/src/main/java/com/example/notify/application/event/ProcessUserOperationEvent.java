@@ -15,7 +15,6 @@ import com.example.notify.engine.matching.RuleAstEvaluator;
 import com.example.notify.engine.timebox.TimeboxCommand;
 import com.example.notify.engine.timebox.TimeboxCounter;
 import com.example.notify.engine.timebox.TimeboxResult;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
@@ -37,12 +36,12 @@ public final class ProcessUserOperationEvent {
                 TimeboxResult result = counter.apply(new TimeboxCommand(
                     matchedStrategy.strategyId(),
                     new CustomerId(snapshot.customerId()),
-                    snapshot.customerId() + ':' + snapshot.userId() + ':' + snapshot.eventType() + ':' + eventId,
+                    dedupDimensionsHash(matchedStrategy.executionPlan(), snapshot),
                     eventId,
                     occurredAt,
-                    Duration.ofSeconds(30),
-                    Duration.ofSeconds(10),
-                    Duration.ZERO,
+                    matchedStrategy.executionPlan().windowSize(),
+                    matchedStrategy.executionPlan().shardSize(),
+                    matchedStrategy.executionPlan().businessDedupWindow(),
                     matchedStrategy.threshold()
                 ));
                 if (result.triggered()) {
@@ -50,6 +49,17 @@ public final class ProcessUserOperationEvent {
                 }
             }
         }
+    }
+
+    private static String dedupDimensionsHash(StrategyExecutionPlan plan, EventSnapshot snapshot) {
+        return String.join("", plan.dedupFields().stream().map(field -> encode(snapshot.value(field))).toList());
+    }
+
+    private static String encode(String value) {
+        if (value == null) {
+            return "-1:";
+        }
+        return value.length() + ":" + value;
     }
 
     private static NotificationEvent notification(MatchedStrategy matchedStrategy, EventId eventId, EventSnapshot snapshot, Instant occurredAt, TimeboxResult result) {
@@ -62,7 +72,7 @@ public final class ProcessUserOperationEvent {
             eventId,
             new EventType(snapshot.eventType()),
             occurredAt,
-            "30s",
+            matchedStrategy.executionPlan().windowSize().toString(),
             matchedStrategy.threshold(),
             result.currentCount(),
             dedupeKey

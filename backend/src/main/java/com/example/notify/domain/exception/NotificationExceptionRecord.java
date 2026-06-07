@@ -16,7 +16,8 @@ public record NotificationExceptionRecord(
     String failureReason,
     int retryCount,
     String status,
-    Instant createdAt
+    Instant createdAt,
+    Instant updatedAt
 ) {
 
     public NotificationExceptionRecord {
@@ -24,7 +25,7 @@ public record NotificationExceptionRecord(
         requireText(payload, "exception payload");
         requireText(failureReason, "failure reason");
         requireText(status, "exception status");
-        if (notificationId == null || strategyId == null || customerId == null || eventId == null || createdAt == null || retryCount < 0) {
+        if (notificationId == null || strategyId == null || customerId == null || eventId == null || createdAt == null || updatedAt == null || retryCount < 0) {
             throw new IllegalArgumentException("notification exception record is incomplete");
         }
         id = id.trim();

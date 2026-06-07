@@ -28,6 +28,7 @@ class PersistNotificationTest {
         persistNotification.persist(event);
 
         assertEquals(1, records.records.size());
+        assertEquals(2, records.insertAttempts);
     }
 
     private static NotificationEvent event(NotificationId notificationId) {
@@ -48,15 +49,16 @@ class PersistNotificationTest {
 
     private static final class InMemoryNotificationRecords implements NotificationRecords {
         private final List<NotificationRecord> records = new ArrayList<>();
+        private int insertAttempts;
 
         @Override
-        public boolean contains(NotificationId notificationId) {
-            return records.stream().anyMatch(record -> record.notificationId().equals(notificationId));
-        }
-
-        @Override
-        public void add(NotificationRecord record) {
+        public boolean addIfAbsent(NotificationRecord record) {
+            insertAttempts++;
+            if (records.stream().anyMatch(existing -> existing.notificationId().equals(record.notificationId()))) {
+                return false;
+            }
             records.add(record);
+            return true;
         }
     }
 

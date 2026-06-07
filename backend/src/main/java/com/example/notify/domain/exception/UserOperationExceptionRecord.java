@@ -14,7 +14,8 @@ public record UserOperationExceptionRecord(
     String failureReason,
     int retryCount,
     String status,
-    Instant createdAt
+    Instant createdAt,
+    Instant updatedAt
 ) {
 
     public UserOperationExceptionRecord {
@@ -22,7 +23,7 @@ public record UserOperationExceptionRecord(
         requireText(payload, "exception payload");
         requireText(failureReason, "failure reason");
         requireText(status, "exception status");
-        if (eventId == null || customerId == null || eventType == null || createdAt == null || retryCount < 0) {
+        if (eventId == null || customerId == null || eventType == null || createdAt == null || updatedAt == null || retryCount < 0) {
             throw new IllegalArgumentException("user operation exception record is incomplete");
         }
         id = id.trim();
