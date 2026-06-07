@@ -21,12 +21,15 @@ import java.util.Map;
 import java.util.Optional;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 public final class JdbcStrategies implements Strategies {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private final JdbcTemplate jdbc;
+    private final TransactionTemplate transaction;
     private final boolean h2;
 
     public JdbcStrategies(JdbcTemplate jdbc) {
@@ -34,6 +37,7 @@ public final class JdbcStrategies implements Strategies {
             throw new IllegalArgumentException("jdbcTemplate must not be null");
         }
         this.jdbc = jdbc;
+        this.transaction = new TransactionTemplate(new DataSourceTransactionManager(jdbc.getDataSource()));
         this.h2 = isH2(jdbc);
     }
 
@@ -79,6 +83,10 @@ public final class JdbcStrategies implements Strategies {
 
     @Override
     public void save(Strategy strategy, IdempotencyKey idempotencyKey, String fingerprint) {
+        transaction.executeWithoutResult(status -> saveInTransaction(strategy, idempotencyKey, fingerprint));
+    }
+
+    private void saveInTransaction(Strategy strategy, IdempotencyKey idempotencyKey, String fingerprint) {
         rejectStaleVersion(strategy);
         RuleAst.Comparison comparison = firstComparison(strategy.ruleAst());
         int changed = jdbc.update(strategyUpsertSql(),

@@ -110,6 +110,21 @@ class JdbcPersistenceTest {
     }
 
     @Test
+    void jdbcStrategiesRollBackStrategyWhenRuleRowsFail() {
+        jdbc.execute("alter table strategy_rule_items add constraint reject_event_type_rule check (field <> 'eventType')");
+        JdbcStrategies strategies = new JdbcStrategies(jdbc);
+
+        assertThrows(RuntimeException.class, () -> strategies.save(
+            strategy("strategy-db-rollback", "PRODUCT_VIEW"),
+            new IdempotencyKey("idem-db-rollback"),
+            "fingerprint-rollback"
+        ));
+
+        assertTrue(strategies.find(new StrategyId("strategy-db-rollback")).isEmpty());
+        assertTrue(strategies.fingerprint(new IdempotencyKey("idem-db-rollback")).isEmpty());
+    }
+
+    @Test
     void jdbcStrategiesRejectStaleVersionOverwrite() {
         JdbcStrategies strategies = new JdbcStrategies(jdbc);
         Strategy created = strategy("strategy-db-lock", "PRODUCT_VIEW");
