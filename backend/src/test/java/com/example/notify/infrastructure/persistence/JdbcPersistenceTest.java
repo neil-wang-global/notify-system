@@ -2,6 +2,7 @@ package com.example.notify.infrastructure.persistence;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.example.notify.domain.event.CustomerId;
@@ -13,6 +14,8 @@ import com.example.notify.domain.exception.UserOperationExceptionRecord;
 import com.example.notify.domain.notification.NotificationEvent;
 import com.example.notify.domain.notification.NotificationId;
 import com.example.notify.domain.notification.NotificationRecord;
+import com.example.notify.config.DataSourceRole;
+import com.example.notify.config.DataSourceRoleContext;
 import com.example.notify.domain.strategy.IdempotencyKey;
 import com.example.notify.domain.strategy.RuleAst;
 import com.example.notify.domain.strategy.RuleOperator;
@@ -21,9 +24,14 @@ import com.example.notify.domain.strategy.StrategyExecutionPlan;
 import com.example.notify.domain.strategy.StrategyId;
 import com.example.notify.domain.strategy.StrategyName;
 import com.example.notify.domain.strategy.StrategyScope;
+import com.example.notify.engine.matching.EventSnapshot;
+import com.example.notify.engine.matching.RuleAstEvaluator;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -55,6 +63,78 @@ class JdbcPersistenceTest {
     }
 
     @Test
+    void jdbcStrategyQueriesRunInReadDatasourceContext() {
+        AtomicReference<DataSourceRole> queryRole = new AtomicReference<>();
+        JdbcTemplate observingJdbc = new JdbcTemplate(jdbc.getDataSource()) {
+            @Override
+            public <T> List<T> query(String sql, org.springframework.jdbc.core.RowMapper<T> rowMapper, Object... args) {
+                queryRole.set(DataSourceRoleContext.current());
+                return super.query(sql, rowMapper, args);
+            }
+        };
+        JdbcStrategies strategies = new JdbcStrategies(observingJdbc);
+        strategies.save(strategy("strategy-db-read", "PRODUCT_VIEW"), new IdempotencyKey("idem-db-read"), "fingerprint-read");
+
+        strategies.find(new StrategyId("strategy-db-read"));
+
+        assertEquals(DataSourceRole.READ, queryRole.get());
+    }
+
+    @Test
+    void persistenceSchemaAddsRuleAstJsonToExistingStrategiesTable() {
+        DataSource dataSource = new DriverManagerDataSource("jdbc:h2:mem:jdbc-migration-" + System.nanoTime() + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", "");
+        JdbcTemplate migrationJdbc = new JdbcTemplate(dataSource);
+        migrationJdbc.execute("""
+            create table strategies (
+                id varchar(128) primary key,
+                name varchar(256) not null,
+                scope_kind varchar(64) not null,
+                rule_field varchar(128) not null,
+                rule_operator varchar(64) not null,
+                rule_value varchar(512) not null,
+                window_size_seconds bigint not null,
+                shard_size_seconds bigint not null,
+                business_dedup_seconds bigint not null,
+                version integer not null
+            )
+            """);
+
+        new PersistenceSchema(migrationJdbc).create();
+
+        Integer columns = migrationJdbc.queryForObject("""
+            select count(*)
+            from information_schema.columns
+            where table_name = 'STRATEGIES' and column_name = 'RULE_AST_JSON'
+            """, Integer.class);
+        assertEquals(1, columns);
+    }
+
+    @Test
+    void jdbcStrategiesRejectStaleVersionOverwrite() {
+        JdbcStrategies strategies = new JdbcStrategies(jdbc);
+        Strategy created = strategy("strategy-db-lock", "PRODUCT_VIEW");
+        Strategy updated = created.update(created.name(), created.scope(), created.ruleAst(), created.executionPlan());
+
+        strategies.save(created, new IdempotencyKey("idem-db-lock-1"), "fingerprint-lock-1");
+        strategies.save(updated, new IdempotencyKey("idem-db-lock-2"), "fingerprint-lock-2");
+
+        assertThrows(IllegalArgumentException.class, () -> strategies.save(created, new IdempotencyKey("idem-db-lock-3"), "fingerprint-lock-3"));
+        assertEquals(2, strategies.find(new StrategyId("strategy-db-lock")).orElseThrow().version().value());
+    }
+
+    @Test
+    void jdbcStrategiesDoNotOverwriteExistingIdempotencyFingerprint() {
+        JdbcStrategies strategies = new JdbcStrategies(jdbc);
+        IdempotencyKey idempotencyKey = new IdempotencyKey("idem-db-once");
+
+        strategies.save(strategy("strategy-db-once-1", "PRODUCT_VIEW"), idempotencyKey, "fingerprint-1");
+        strategies.save(strategy("strategy-db-once-2", "PRODUCT_VIEW"), idempotencyKey, "fingerprint-2");
+
+        assertEquals("fingerprint-1", strategies.fingerprint(idempotencyKey).orElseThrow());
+        assertEquals("strategy-db-once-1", strategies.findByIdempotencyKey(idempotencyKey).orElseThrow().id().toString());
+    }
+
+    @Test
     void jdbcStrategiesPersistGroupedRuleAst() {
         JdbcStrategies strategies = new JdbcStrategies(jdbc);
         RuleAst ast = new RuleAst.Group(com.example.notify.domain.strategy.RuleConnector.AND, List.of(
@@ -72,6 +152,30 @@ class JdbcPersistenceTest {
         strategies.save(strategy, new IdempotencyKey("idem-db-group"), "fingerprint-group");
 
         assertTrue(strategies.find(new StrategyId("strategy-db-group")).orElseThrow().ruleAst() instanceof RuleAst.Group);
+        Integer rows = jdbc.queryForObject("select count(*) from strategy_rule_items where strategy_id = ?", Integer.class, "strategy-db-group");
+        assertEquals(2, rows);
+    }
+
+    @Test
+    void jdbcStrategiesPreserveStructuredRuleValuesAfterRoundTrip() {
+        JdbcStrategies strategies = new JdbcStrategies(jdbc);
+        RuleAst ast = new RuleAst.Group(com.example.notify.domain.strategy.RuleConnector.AND, List.of(
+            new RuleAst.Comparison("eventType", RuleOperator.EQ, "PRODUCT_VIEW"),
+            new RuleAst.Comparison("productId", RuleOperator.IN, List.of("P001", "P002"))
+        ));
+        Strategy strategy = Strategy.create(
+            new StrategyId("strategy-db-structured"),
+            new StrategyName("Structured Rule Strategy"),
+            StrategyScope.global(),
+            ast,
+            new StrategyExecutionPlan(Duration.ofSeconds(30), Duration.ofSeconds(10), Duration.ZERO, List.of("customerId", "userId", "eventType"))
+        );
+
+        strategies.save(strategy, new IdempotencyKey("idem-db-structured"), "fingerprint-structured");
+
+        RuleAst restored = strategies.find(new StrategyId("strategy-db-structured")).orElseThrow().ruleAst();
+        EventSnapshot snapshot = new EventSnapshot("customer-1", "user-1", Set.of(), "PRODUCT_VIEW", Map.of("productId", "P001"));
+        assertTrue(new RuleAstEvaluator().matches(restored, snapshot));
     }
 
     @Test

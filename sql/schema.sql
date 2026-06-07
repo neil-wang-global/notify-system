@@ -21,10 +21,23 @@ create table if not exists strategies (
     rule_field varchar(128) not null,
     rule_operator varchar(64) not null,
     rule_value varchar(512) not null,
+    rule_ast_json text,
     window_size_seconds bigint not null,
     shard_size_seconds bigint not null,
     business_dedup_seconds bigint not null,
     version integer not null
+);
+
+create table if not exists strategy_rule_items (
+    strategy_id varchar(128) not null references strategies(id),
+    sort_order integer not null,
+    group_id varchar(128) not null,
+    connector varchar(64) not null,
+    field varchar(128) not null,
+    operator varchar(64) not null,
+    value_type varchar(64) not null,
+    value_json text not null,
+    primary key (strategy_id, sort_order)
 );
 
 create table if not exists strategy_idempotency_keys (

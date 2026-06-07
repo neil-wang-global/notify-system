@@ -28,6 +28,18 @@ create table if not exists strategies (
     version integer not null
 );
 
+create table if not exists strategy_rule_items (
+    strategy_id varchar(128) not null references strategies(id),
+    sort_order integer not null,
+    group_id varchar(128) not null,
+    connector varchar(64) not null,
+    field varchar(128) not null,
+    operator varchar(64) not null,
+    value_type varchar(64) not null,
+    value_json text not null,
+    primary key (strategy_id, sort_order)
+);
+
 create table if not exists strategy_idempotency_keys (
     idempotency_key varchar(256) primary key,
     strategy_id varchar(128) not null references strategies(id),

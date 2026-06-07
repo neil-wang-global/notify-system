@@ -15,6 +15,25 @@ public final class PersistenceSchema {
 
     public void create() {
         jdbc.execute("""
+            create table if not exists users (
+                id varchar(128) primary key,
+                user_token varchar(256) not null unique
+            )
+            """);
+        jdbc.execute("""
+            create table if not exists user_groups (
+                id varchar(128) primary key,
+                name varchar(256) not null
+            )
+            """);
+        jdbc.execute("""
+            create table if not exists user_group_members (
+                user_id varchar(128) not null,
+                user_group_id varchar(128) not null,
+                primary key (user_id, user_group_id)
+            )
+            """);
+        jdbc.execute("""
             create table if not exists strategies (
                 id varchar(128) primary key,
                 name varchar(256) not null,
@@ -27,6 +46,20 @@ public final class PersistenceSchema {
                 shard_size_seconds bigint not null,
                 business_dedup_seconds bigint not null,
                 version integer not null
+            )
+            """);
+        jdbc.execute("alter table strategies add column if not exists rule_ast_json text");
+        jdbc.execute("""
+            create table if not exists strategy_rule_items (
+                strategy_id varchar(128) not null,
+                sort_order integer not null,
+                group_id varchar(128) not null,
+                connector varchar(64) not null,
+                field varchar(128) not null,
+                operator varchar(64) not null,
+                value_type varchar(64) not null,
+                value_json text not null,
+                primary key (strategy_id, sort_order)
             )
             """);
         jdbc.execute("""
