@@ -8,6 +8,10 @@ public record StrategyVersion(int value) {
         }
     }
 
+    public StrategyVersion next() {
+        return new StrategyVersion(value + 1);
+    }
+
     @Override
     public String toString() {
         return Integer.toString(value);

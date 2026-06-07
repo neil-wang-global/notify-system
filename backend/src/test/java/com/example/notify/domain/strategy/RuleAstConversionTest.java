@@ -74,4 +74,12 @@ class RuleAstConversionTest {
         assertThrows(IllegalArgumentException.class, () -> RuleAst.fromRows(List.of()));
     }
 
+    @Test
+    void rejectsMixedConnectorsInsideSameGroup() {
+        assertThrows(IllegalArgumentException.class, () -> RuleAst.fromRows(List.of(
+            StrategyRuleItem.condition("eventType", RuleOperator.EQ, RuleValue.ofString("PRODUCT_VIEW"), RuleConnector.AND, new RuleGroup("root"), 1),
+            StrategyRuleItem.condition("productId", RuleOperator.EQ, RuleValue.ofString("P001"), RuleConnector.OR, new RuleGroup("root"), 2)
+        )));
+    }
+
 }

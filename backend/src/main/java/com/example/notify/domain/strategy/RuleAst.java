@@ -33,6 +33,9 @@ public sealed interface RuleAst permits RuleAst.Comparison, RuleAst.Group, RuleA
             return comparisonFor(groupRows.getFirst());
         }
         RuleConnector connector = groupRows.getFirst().connector();
+        if (groupRows.stream().anyMatch(row -> row.connector() != connector)) {
+            throw new IllegalArgumentException("rule group cannot mix connectors");
+        }
         List<RuleAst> children = groupRows.stream()
             .map(RuleAst::comparisonFor)
             .toList();

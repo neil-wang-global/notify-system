@@ -10,7 +10,7 @@ public record StrategyRuleItem(
 ) {
 
     public StrategyRuleItem {
-        RuleFieldMetadata.required(field);
+        RuleFieldMetadata metadata = RuleFieldMetadata.required(field);
         if (operator == null) {
             throw new IllegalArgumentException("rule operator must not be null");
         }
@@ -23,8 +23,20 @@ public record StrategyRuleItem(
         if (group == null) {
             throw new IllegalArgumentException("rule group must not be null");
         }
+        if (sortOrder <= 0) {
+            throw new IllegalArgumentException("rule sort order must be positive");
+        }
         if (!operator.supports(value.type())) {
             throw new IllegalArgumentException("rule operator does not support value type");
+        }
+        if (!fieldSupports(metadata.valueType(), value.type())) {
+            throw new IllegalArgumentException("rule field does not support value type");
+        }
+        if (operator == RuleOperator.BETWEEN && !(value.raw() instanceof java.util.List<?> values && values.size() == 2)) {
+            throw new IllegalArgumentException("between rule value must contain exactly two values");
+        }
+        if (operator != RuleOperator.BETWEEN && operator != RuleOperator.IN && operator != RuleOperator.NOT_IN && value.raw() instanceof java.util.List<?>) {
+            throw new IllegalArgumentException("scalar operator cannot use range value");
         }
         field = field.trim();
     }
@@ -38,6 +50,12 @@ public record StrategyRuleItem(
         int sortOrder
     ) {
         return new StrategyRuleItem(field, operator, value, connector, group, sortOrder);
+    }
+
+    private static boolean fieldSupports(RuleValueType fieldType, RuleValueType valueType) {
+        return fieldType == valueType
+            || fieldType == RuleValueType.STRING && valueType == RuleValueType.STRING_LIST
+            || fieldType == RuleValueType.NUMBER && valueType == RuleValueType.NUMBER_LIST;
     }
 
 }
