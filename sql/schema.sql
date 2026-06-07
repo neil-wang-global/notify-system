@@ -1,3 +1,38 @@
+create table if not exists users (
+    id varchar(128) primary key,
+    user_token varchar(256) not null unique
+);
+
+create table if not exists user_groups (
+    id varchar(128) primary key,
+    name varchar(256) not null
+);
+
+create table if not exists user_group_members (
+    user_id varchar(128) not null,
+    user_group_id varchar(128) not null,
+    primary key (user_id, user_group_id)
+);
+
+create table if not exists strategies (
+    id varchar(128) primary key,
+    name varchar(256) not null,
+    scope_kind varchar(64) not null,
+    rule_field varchar(128) not null,
+    rule_operator varchar(64) not null,
+    rule_value varchar(512) not null,
+    window_size_seconds bigint not null,
+    shard_size_seconds bigint not null,
+    business_dedup_seconds bigint not null,
+    version integer not null
+);
+
+create table if not exists strategy_idempotency_keys (
+    idempotency_key varchar(256) primary key,
+    strategy_id varchar(128) not null references strategies(id),
+    fingerprint varchar(512) not null
+);
+
 create table if not exists notification_records (
     notification_id varchar(128) primary key,
     strategy_id varchar(128) not null,
@@ -6,7 +41,9 @@ create table if not exists notification_records (
     event_id varchar(128) not null,
     event_type varchar(128) not null,
     triggered_at timestamp with time zone not null,
-    payload text not null,
+    window_value varchar(64) not null,
+    threshold_value integer not null,
+    current_count integer not null,
     dedupe_key varchar(512) not null unique
 );
 

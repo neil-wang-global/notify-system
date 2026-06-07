@@ -5,8 +5,8 @@ import com.example.notify.application.strategy.SaveStrategy;
 import com.example.notify.domain.event.User;
 import com.example.notify.domain.event.UserId;
 import com.example.notify.domain.event.Users;
-import com.example.notify.domain.notification.NotificationEvent;
 import com.example.notify.domain.notification.NotificationRecord;
+import com.example.notify.domain.notification.NotificationRecords;
 import com.example.notify.domain.strategy.RuleAst;
 import com.example.notify.domain.strategy.RuleOperator;
 import com.example.notify.domain.strategy.Strategies;
@@ -15,25 +15,28 @@ import com.example.notify.domain.strategy.StrategyId;
 import com.example.notify.engine.matching.RuleAstEvaluator;
 import com.example.notify.engine.timebox.TimeboxCounter;
 import java.time.Duration;
-import com.example.notify.infrastructure.persistence.DbStrategies;
+import com.example.notify.infrastructure.persistence.JdbcNotificationExceptions;
+import com.example.notify.infrastructure.persistence.JdbcNotificationRecords;
+import com.example.notify.infrastructure.persistence.JdbcStrategies;
+import com.example.notify.infrastructure.persistence.JdbcUserOperationExceptions;
+import com.example.notify.infrastructure.persistence.PersistenceSchema;
 import com.example.notify.interfaces.rest.EventsApi;
 import com.example.notify.interfaces.rest.ExceptionsApi;
 import com.example.notify.interfaces.rest.NotificationsApi;
 import com.example.notify.interfaces.rest.StatusApi;
 import com.example.notify.interfaces.rest.StrategiesApi;
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 @Configuration
 public class NotifyRuntimeConfig {
 
-    private final List<NotificationEvent> notificationEvents = new CopyOnWriteArrayList<>();
-
     @Bean
-    Strategies strategies() {
-        return new DbStrategies();
+    Strategies strategies(JdbcTemplate jdbcTemplate) {
+        new PersistenceSchema(jdbcTemplate).create();
+        return new JdbcStrategies(jdbcTemplate);
     }
 
     @Bean
@@ -47,8 +50,8 @@ public class NotifyRuntimeConfig {
     }
 
     @Bean
-    ProcessUserOperationEvent processUserOperationEvent() {
-        return new ProcessUserOperationEvent(new RuleAstEvaluator(), new TimeboxCounter(), notificationEvents::add);
+    ProcessUserOperationEvent processUserOperationEvent(NotificationRecords notificationRecords) {
+        return new ProcessUserOperationEvent(new RuleAstEvaluator(), new TimeboxCounter(), event -> notificationRecords.addIfAbsent(NotificationRecord.from(event)));
     }
 
     @Bean
@@ -68,15 +71,28 @@ public class NotifyRuntimeConfig {
     }
 
     @Bean
-    NotificationsApi notificationsApi() {
-        return new NotificationsApi(() -> notificationEvents.stream()
-            .map(event -> new NotificationRecord(event.notificationId(), event, event.triggeredAt()))
-            .toList());
+    JdbcNotificationRecords notificationRecords(JdbcTemplate jdbcTemplate) {
+        return new JdbcNotificationRecords(jdbcTemplate);
     }
 
     @Bean
-    ExceptionsApi exceptionsApi() {
-        return new ExceptionsApi(List::of, List::of);
+    JdbcUserOperationExceptions userOperationExceptions(JdbcTemplate jdbcTemplate) {
+        return new JdbcUserOperationExceptions(jdbcTemplate);
+    }
+
+    @Bean
+    JdbcNotificationExceptions notificationExceptions(JdbcTemplate jdbcTemplate) {
+        return new JdbcNotificationExceptions(jdbcTemplate);
+    }
+
+    @Bean
+    NotificationsApi notificationsApi(JdbcNotificationRecords notificationRecords) {
+        return new NotificationsApi(notificationRecords::list);
+    }
+
+    @Bean
+    ExceptionsApi exceptionsApi(JdbcUserOperationExceptions userOperationExceptions, JdbcNotificationExceptions notificationExceptions) {
+        return new ExceptionsApi(userOperationExceptions::list, notificationExceptions::list);
     }
 
     @Bean
