@@ -7,7 +7,13 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
+@RestController
+@RequestMapping("/api/events")
 public final class EventsApi {
 
     private final ProcessUserOperationEvent processUserOperationEvent;
@@ -21,7 +27,8 @@ public final class EventsApi {
         this.matchedStrategies = List.copyOf(matchedStrategies);
     }
 
-    public EventResponse simulate(UserOperationEventRequest request) {
+    @PostMapping("/simulate")
+    public EventResponse simulate(@RequestBody UserOperationEventRequest request) {
         if (request == null) {
             throw new IllegalArgumentException("event request must not be null");
         }

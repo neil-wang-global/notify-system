@@ -1,5 +1,11 @@
 package com.example.notify.interfaces.rest;
 
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/status")
 public final class StatusApi {
 
     private final StatusResponse status;
@@ -11,6 +17,7 @@ public final class StatusApi {
         this.status = status;
     }
 
+    @GetMapping
     public StatusResponse current() {
         return status;
     }

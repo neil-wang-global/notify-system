@@ -4,7 +4,12 @@ import com.example.notify.domain.exception.NotificationExceptionRecord;
 import com.example.notify.domain.exception.UserOperationExceptionRecord;
 import java.util.List;
 import java.util.function.Supplier;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
+@RestController
+@RequestMapping("/api/exceptions")
 public final class ExceptionsApi {
 
     private final Supplier<List<UserOperationExceptionRecord>> userOperationExceptions;
@@ -18,10 +23,12 @@ public final class ExceptionsApi {
         this.notificationExceptions = notificationExceptions;
     }
 
+    @GetMapping("/user-operations")
     public List<UserOperationExceptionRecord> userOperationExceptions() {
         return List.copyOf(userOperationExceptions.get());
     }
 
+    @GetMapping("/notifications")
     public List<NotificationExceptionRecord> notificationExceptions() {
         return List.copyOf(notificationExceptions.get());
     }
