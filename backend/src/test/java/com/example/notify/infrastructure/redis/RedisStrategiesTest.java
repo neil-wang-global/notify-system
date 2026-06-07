@@ -62,4 +62,34 @@ class RedisStrategiesTest {
         assertTrue(redisStrategies.scopeIndex().groupStrategies(new UserGroupId("group-1")).contains(strategyId));
     }
 
+    @Test
+    void acceptedRefreshRemovesOldIndexes() {
+        RedisStrategies redisStrategies = new RedisStrategies();
+        StrategyId strategyId = new StrategyId("strategy-1");
+        redisStrategies.refresh(new RedisStrategy(
+            strategyId,
+            new StrategyVersion(1),
+            new StrategyExecutionPlan("plan-v1"),
+            StrategyScope.users(new UserId("user-1")),
+            new EventType("PRODUCT_VIEW"),
+            List.of(new RedisFieldIndex("productId", "P001"))
+        ));
+
+        assertTrue(redisStrategies.refresh(new RedisStrategy(
+            strategyId,
+            new StrategyVersion(2),
+            new StrategyExecutionPlan("plan-v2"),
+            StrategyScope.users(new UserId("user-2")),
+            new EventType("ORDER_CREATED"),
+            List.of(new RedisFieldIndex("orderId", "O001"))
+        )));
+
+        assertFalse(redisStrategies.scopeIndex().userStrategies(new UserId("user-1")).contains(strategyId));
+        assertFalse(redisStrategies.eventTypeIndex().strategies(new EventType("PRODUCT_VIEW")).contains(strategyId));
+        assertFalse(redisStrategies.fieldIndex().strategies("productId", "P001").contains(strategyId));
+        assertTrue(redisStrategies.scopeIndex().userStrategies(new UserId("user-2")).contains(strategyId));
+        assertTrue(redisStrategies.eventTypeIndex().strategies(new EventType("ORDER_CREATED")).contains(strategyId));
+        assertTrue(redisStrategies.fieldIndex().strategies("orderId", "O001").contains(strategyId));
+    }
+
 }
