@@ -1,14 +1,33 @@
 services:
-  postgres:
-    image: postgres:16-alpine
+  postgres-primary:
+    image: bitnami/postgresql:16
     environment:
-      POSTGRES_DB: notify
-      POSTGRES_USER: notify
-      POSTGRES_PASSWORD: notify
+      POSTGRESQL_REPLICATION_MODE: master
+      POSTGRESQL_REPLICATION_USER: replicator
+      POSTGRESQL_REPLICATION_PASSWORD: replicator
+      POSTGRESQL_DATABASE: notify
+      POSTGRESQL_USERNAME: notify
+      POSTGRESQL_PASSWORD: notify
+      POSTGRESQL_POSTGRES_PASSWORD: notify
     ports:
       - "5432:5432"
     volumes:
       - ./sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+
+  postgres-replica:
+    image: bitnami/postgresql:16
+    depends_on:
+      - postgres-primary
+    environment:
+      POSTGRESQL_REPLICATION_MODE: slave
+      POSTGRESQL_REPLICATION_USER: replicator
+      POSTGRESQL_REPLICATION_PASSWORD: replicator
+      POSTGRESQL_MASTER_HOST: postgres-primary
+      POSTGRESQL_MASTER_PORT_NUMBER: 5432
+      POSTGRESQL_PASSWORD: notify
+      POSTGRESQL_POSTGRES_PASSWORD: notify
+    ports:
+      - "5433:5432"
 
   redis:
     image: redis:7-alpine
@@ -29,9 +48,22 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+
+  kafka-topics:
+    image: confluentinc/cp-kafka:7.6.1
+    depends_on:
+      - kafka
+    command: >
+      bash -c "cub kafka-ready -b kafka:29092 1 60 &&
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic user-operation-events --partitions 24 --replication-factor 1 &&
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic notification-events --partitions 24 --replication-factor 1 &&
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic user-operation-events-dlt --partitions 6 --replication-factor 1 &&
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic notification-events-dlt --partitions 6 --replication-factor 1"
 
   backend:
     image: eclipse-temurin:21-jdk
@@ -40,9 +72,18 @@ services:
       - ./backend:/app
     command: ./gradlew bootRun
     depends_on:
-      - postgres
+      - postgres-primary
+      - postgres-replica
       - redis
-      - kafka
+      - kafka-topics
+    environment:
+      NOTIFY_DB_WRITE_URL: jdbc:postgresql://postgres-primary:5432/notify
+      NOTIFY_DB_READ_URL: jdbc:postgresql://postgres-replica:5432/notify
+      NOTIFY_DB_USERNAME: notify
+      NOTIFY_DB_PASSWORD: notify
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     ports:
       - "8080:8080"
 
@@ -51,6 +92,6 @@ services:
     working_dir: /app
     volumes:
       - ./frontend:/app
-    command: sh -c "npm install && npm run dev"
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
     ports:
       - "5173:5173"
