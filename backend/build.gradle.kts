@@ -34,5 +34,7 @@ dependencies {
 }
 
 tasks.withType<Test> {
-	useJUnitPlatform()
+	useJUnitPlatform {
+		excludeTags("docker")
+	}
 }

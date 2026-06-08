@@ -12,6 +12,12 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * In-memory fallback for Redis strategy storage and indexes.
+ * <p>
+ * Used when Redis is not available (e.g., unit tests with Redis autoconfiguration excluded).
+ * The real Redis-backed implementation is {@link RealRedisStrategies}.
+ */
 public final class RedisStrategies {
 
     private final Map<StrategyId, RedisStrategy> strategies = new ConcurrentHashMap<>();

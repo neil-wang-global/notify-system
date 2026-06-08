@@ -20,14 +20,19 @@ import com.example.notify.infrastructure.persistence.JdbcNotificationRecords;
 import com.example.notify.infrastructure.persistence.JdbcStrategies;
 import com.example.notify.infrastructure.persistence.JdbcUserOperationExceptions;
 import com.example.notify.infrastructure.persistence.PersistenceSchema;
+import com.example.notify.infrastructure.redis.RealRedisStrategies;
+import com.example.notify.infrastructure.redis.RedisStrategies;
 import com.example.notify.interfaces.rest.EventsApi;
 import com.example.notify.interfaces.rest.ExceptionsApi;
 import com.example.notify.interfaces.rest.NotificationsApi;
 import com.example.notify.interfaces.rest.StatusApi;
 import com.example.notify.interfaces.rest.StrategiesApi;
 import java.util.List;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 @Configuration
@@ -104,6 +109,20 @@ public class NotifyRuntimeConfig {
     @Bean
     StatusApi statusApi() {
         return new StatusApi(StatusApi.StatusResponse.healthy());
+    }
+
+    // --- Redis strategy adapters (conditional on StringRedisTemplate availability) ---
+
+    @Bean
+    @ConditionalOnBean(StringRedisTemplate.class)
+    RealRedisStrategies realRedisStrategies(StringRedisTemplate redis) {
+        return new RealRedisStrategies(redis);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(StringRedisTemplate.class)
+    RedisStrategies inMemoryRedisStrategies() {
+        return new RedisStrategies();
     }
 
 }

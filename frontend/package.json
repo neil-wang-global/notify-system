@@ -2,6 +2,7 @@
   "name": "notify-system-console",
   "private": true,
   "version": "0.1.0",
+  "license": "SSPL-1.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
