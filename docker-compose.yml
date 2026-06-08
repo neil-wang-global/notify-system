@@ -1,39 +1,83 @@
 services:
+  # ── PostgreSQL: primary + replica ──
   postgres-primary:
-    image: bitnami/postgresql:16
+    image: postgres:16
     environment:
-      POSTGRESQL_REPLICATION_MODE: master
-      POSTGRESQL_REPLICATION_USER: replicator
-      POSTGRESQL_REPLICATION_PASSWORD: replicator
-      POSTGRESQL_DATABASE: notify
-      POSTGRESQL_USERNAME: notify
-      POSTGRESQL_PASSWORD: notify
-      POSTGRESQL_POSTGRES_PASSWORD: notify
+      POSTGRES_DB: notify
+      POSTGRES_USER: notify
+      POSTGRES_PASSWORD: notify
     ports:
       - "5432:5432"
     volumes:
-      - ./sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+      - ./scripts/pg-primary-init.sh:/docker-entrypoint-initdb.d/01-replication.sh:ro
+    command: >
+      postgres
+        -c wal_level=replica
+        -c max_wal_senders=5
+        -c max_replication_slots=5
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notify -d notify"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   postgres-replica:
-    image: bitnami/postgresql:16
+    image: postgres:16
     depends_on:
-      - postgres-primary
-    environment:
-      POSTGRESQL_REPLICATION_MODE: slave
-      POSTGRESQL_REPLICATION_USER: replicator
-      POSTGRESQL_REPLICATION_PASSWORD: replicator
-      POSTGRESQL_MASTER_HOST: postgres-primary
-      POSTGRESQL_MASTER_PORT_NUMBER: 5432
-      POSTGRESQL_PASSWORD: notify
-      POSTGRESQL_POSTGRES_PASSWORD: notify
+      postgres-primary:
+        condition: service_healthy
     ports:
       - "5433:5432"
+    environment:
+      PGUSER: replication
+      PGPASSWORD: notify
+    entrypoint: []
+    command: >
+      bash -c "
+        rm -rf /var/lib/postgresql/data/*
+        until pg_isready -h postgres-primary -p 5432 -U notify -d notify; do sleep 1; done
+        pg_basebackup -h postgres-primary -U replication -D /var/lib/postgresql/data -Fp -Xs -P -R
+        echo 'hot_standby = on' >> /var/lib/postgresql/data/postgresql.auto.conf
+        exec docker-entrypoint.sh postgres
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -p 5432 -U notify -d notify"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
-  redis:
+  # ── Redis Cluster: 3 masters ──
+  redis-node-1:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+      - "16379:16379"
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
 
+  redis-node-2:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+      - "16380:16379"
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+
+  redis-node-3:
+    image: redis:7-alpine
+    ports:
+      - "6381:6379"
+      - "16381:16379"
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+
+  redis-cluster-init:
+    image: redis:7-alpine
+    depends_on:
+      - redis-node-1
+      - redis-node-2
+      - redis-node-3
+    entrypoint: []
+    command: ["sh", "-c", "for i in 1 2 3; do until redis-cli -h redis-node-$$i -p 6379 ping | grep -q PONG; do sleep 1; done; done && redis-cli --cluster create redis-node-1:6379 redis-node-2:6379 redis-node-3:6379 --cluster-replicas 0 --cluster-yes"]
+
+  # ── Kafka: single broker ──
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.1
     environment:
@@ -65,6 +109,7 @@ services:
       kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic user-operation-events-dlt --partitions 6 --replication-factor 1 &&
       kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic notification-events-dlt --partitions 6 --replication-factor 1"
 
+  # ── Backend ──
   backend:
     image: eclipse-temurin:21-jdk
     working_dir: /app
@@ -74,7 +119,7 @@ services:
     depends_on:
       - postgres-primary
       - postgres-replica
-      - redis
+      - redis-cluster-init
       - kafka-topics
     environment:
       NOTIFY_DB_ROUTING_ENABLED: "true"
@@ -83,11 +128,11 @@ services:
       NOTIFY_DB_USERNAME: notify
       NOTIFY_DB_PASSWORD: notify
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
+      SPRING_DATA_REDIS_CLUSTER_NODES: redis-node-1:6379,redis-node-2:6379,redis-node-3:6379
     ports:
       - "8080:8080"
 
+  # ── Frontend ──
   frontend:
     image: node:22-alpine
     working_dir: /app
