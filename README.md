@@ -259,7 +259,7 @@ flowchart TB
 
 ### 测试环境
 
-Docker Compose 单机部署（PostgreSQL 主从、Redis Cluster 3 节点、Kafka 单 broker），后端单实例运行。测试工具为 Shell 脚本并发 curl，策略业务去重窗口设为 0s 以消除去重干扰，直接测量端到端吞吐。
+Docker Compose 部署（PostgreSQL 主从、Redis Cluster 3 节点、Kafka 单 broker），后端单实例运行。测试工具为 Shell 脚本并发 curl，策略业务去重窗口设为 0s 以消除去重干扰，直接测量端到端吞吐。
 
 ### 测试场景
 
@@ -306,7 +306,7 @@ Docker Compose 单机部署（PostgreSQL 主从、Redis Cluster 3 节点、Kafka
 | Redis × 3 | ~1.2% | 5.5 MiB / 节点 |
 | Kafka | 1.49% | 513.9 MiB |
 
-**结论：** 单机部署下，系统稳定处理 10,000 条事件的端到端链路，P99 延迟控制在 100ms 以内，零错误，资源占用低。瓶颈在单机 HTTP 客户端并发能力，后端 P50 延迟仅 5-11ms，仍有充足的吞吐余量。
+**结论：** 按此方案部署下，系统稳定处理 10,000 条事件的端到端链路，P99 延迟控制在 100ms 以内，零错误，资源占用低。瓶颈在单机 HTTP 客户端并发能力，后端 P50 延迟仅 5-11ms，仍有充足的吞吐余量。
 
 ### 复现压测
 
