@@ -47,8 +47,17 @@ check "Redis cluster state is ok" \
 check "Redis cluster has 16384 slots assigned" \
   "docker exec notify-system-redis-node-1-1 redis-cli cluster info | grep -q 'cluster_slots_assigned:16384'"
 
+check "Redis cluster has 3 master nodes" \
+  "docker exec notify-system-redis-node-1-1 redis-cli cluster info | grep -q 'cluster_known_nodes:3'"
+
 check "Kafka topics exist" \
   "docker exec notify-system-kafka-1 kafka-topics --bootstrap-server localhost:9092 --list | grep -q user-operation-events"
+
+check "Kafka notification-events topic exists" \
+  "docker exec notify-system-kafka-1 kafka-topics --bootstrap-server localhost:9092 --list | grep -q notification-events"
+
+check "Kafka DLT topics exist" \
+  "docker exec notify-system-kafka-1 kafka-topics --bootstrap-server localhost:9092 --list | grep -q user-operation-events-dlt && docker exec notify-system-kafka-1 kafka-topics --bootstrap-server localhost:9092 --list | grep -q notification-events-dlt"
 
 echo ""
 
@@ -105,6 +114,18 @@ else
 
   check "GET /api/exceptions/notifications returns 200" \
     "curl -sf '$API_BASE/api/exceptions/notifications'"
+fi
+
+echo ""
+
+# ── Frontend ──
+echo "Frontend:"
+
+if [[ "$SKIP_BACKEND" == true ]]; then
+  echo "  (skipped — requires backend)"
+else
+  check "Frontend returns 200" \
+    "curl -sf -o /dev/null -w '%{http_code}' 'http://localhost:5173/' | grep -q 200"
 fi
 
 echo ""
