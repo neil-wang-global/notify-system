@@ -41,6 +41,7 @@ class RuntimeApisWebTest {
                       "scope": { "kind": "GLOBAL", "userIds": [], "userGroupIds": [] },
                       "eventType": "PRODUCT_VIEW",
                       "userToken": "token-1",
+                      "threshold": 1,
                       "idempotencyKey": "idem-event-test"
                     }
                     """))
@@ -143,10 +144,93 @@ class RuntimeApisWebTest {
               "eventType": "PRODUCT_VIEW",
               "userToken": "token-1",
               "idempotencyKey": "%s",
-              "executionPlan": "plan-web-1",
+              "threshold": 1,
               "expectedVersion": %d
             }
             """.formatted(strategyId, name, idempotencyKey, expectedVersion);
+    }
+
+    @Test
+    void strategySaveWithEventTypeAndRulesCoexistCreatesStrategy() throws Exception {
+        mockMvc.perform(post("/api/strategies")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "strategyId": "strategy-coexist",
+                      "name": "EventType and Rules Coexist",
+                      "scope": { "kind": "GLOBAL", "userIds": [], "userGroupIds": [] },
+                      "eventType": "PRODUCT_VIEW",
+                      "rules": [
+                        { "field": "productId", "operator": "IN", "value": ["P001", "P002"], "connector": "AND", "group": "root", "sortOrder": 1 }
+                      ],
+                      "userToken": "token-1",
+                      "threshold": 1,
+                      "idempotencyKey": "idem-coexist"
+                    }
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.strategyId").value("strategy-coexist"));
+
+        mockMvc.perform(get("/api/strategies/strategy-coexist"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.eventType").value("PRODUCT_VIEW"))
+            .andExpect(jsonPath("$.rules.length()").value(1))
+            .andExpect(jsonPath("$.rules[0].field").value("productId"));
+    }
+
+    @Test
+    void strategySaveWithEventTypeAndRulesCoexistMatchesEvent() throws Exception {
+        mockMvc.perform(post("/api/strategies")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "strategyId": "strategy-match-coexist",
+                      "name": "Match Coexist",
+                      "scope": { "kind": "GLOBAL", "userIds": [], "userGroupIds": [] },
+                      "eventType": "PRODUCT_VIEW",
+                      "rules": [
+                        { "field": "productId", "operator": "EQ", "value": "P001", "connector": "AND", "group": "root", "sortOrder": 1 }
+                      ],
+                      "userToken": "token-1",
+                      "threshold": 1,
+                      "idempotencyKey": "idem-match-coexist"
+                    }
+                    """))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/events/simulate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "eventId": "event-coexist-1",
+                      "customerId": "customer-1",
+                      "userId": "user-1",
+                      "eventType": "PRODUCT_VIEW",
+                      "fields": { "productId": "P001" }
+                    }
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.eventId").value("event-coexist-1"));
+    }
+
+    @Test
+    void strategySaveRejectsMissingEventTypeWhenRulesPresent() throws Exception {
+        mockMvc.perform(post("/api/strategies")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "strategyId": "strategy-no-event",
+                      "name": "Missing EventType",
+                      "scope": { "kind": "GLOBAL", "userIds": [], "userGroupIds": [] },
+                      "rules": [
+                        { "field": "productId", "operator": "EQ", "value": "P001", "connector": "AND", "group": "root", "sortOrder": 1 }
+                      ],
+                      "userToken": "token-1",
+                      "threshold": 1,
+                      "idempotencyKey": "idem-no-event"
+                    }
+                    """))
+            .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -158,12 +242,13 @@ class RuntimeApisWebTest {
                       "strategyId": "strategy-web-rows",
                       "name": "Row Based Strategy",
                       "scope": { "kind": "GLOBAL", "userIds": [], "userGroupIds": [] },
+                      "eventType": "PRODUCT_VIEW",
                       "rules": [
-                        { "field": "eventType", "operator": "EQ", "value": "PRODUCT_VIEW", "connector": "AND", "group": "root", "sortOrder": 1 },
-                        { "field": "productId", "operator": "IN", "value": ["P001", "P002"], "connector": "AND", "group": "root", "sortOrder": 2 }
+                        { "field": "productId", "operator": "IN", "value": ["P001", "P002"], "connector": "AND", "group": "root", "sortOrder": 1 }
                       ],
                       "executionPlan": "plan-web-rows",
                       "userToken": "token-1",
+                      "threshold": 1,
                       "idempotencyKey": "idem-web-rows"
                     }
                     """))
@@ -180,11 +265,10 @@ class RuntimeApisWebTest {
                       "strategyId": "strategy-users-1",
                       "name": "Users scoped strategy",
                       "scope": { "kind": "USERS", "userIds": ["user-1", "user-2"], "userGroupIds": [] },
-                      "rules": [
-                        { "field": "eventType", "operator": "EQ", "value": "PRODUCT_VIEW", "connector": "AND", "group": "root", "sortOrder": 1 }
-                      ],
+                      "eventType": "PRODUCT_VIEW",
                       "executionPlan": "plan-users-1",
                       "userToken": "token-1",
+                      "threshold": 1,
                       "idempotencyKey": "idem-users-1"
                     }
                     """))
@@ -202,11 +286,10 @@ class RuntimeApisWebTest {
                       "strategyId": "strategy-groups-1",
                       "name": "User groups scoped strategy",
                       "scope": { "kind": "USER_GROUPS", "userIds": [], "userGroupIds": ["group-1", "group-2"] },
-                      "rules": [
-                        { "field": "eventType", "operator": "EQ", "value": "ORDER_CREATED", "connector": "AND", "group": "root", "sortOrder": 1 }
-                      ],
+                      "eventType": "ORDER_CREATED",
                       "executionPlan": "plan-groups-1",
                       "userToken": "token-1",
+                      "threshold": 1,
                       "idempotencyKey": "idem-groups-1"
                     }
                     """))
@@ -224,11 +307,10 @@ class RuntimeApisWebTest {
                       "strategyId": "strategy-update-v2",
                       "name": "Version 1",
                       "scope": { "kind": "USERS", "userIds": ["user-1"], "userGroupIds": [] },
-                      "rules": [
-                        { "field": "eventType", "operator": "EQ", "value": "PRODUCT_VIEW", "connector": "AND", "group": "root", "sortOrder": 1 }
-                      ],
+                      "eventType": "PRODUCT_VIEW",
                       "executionPlan": "plan-update-v2",
                       "userToken": "token-1",
+                      "threshold": 1,
                       "idempotencyKey": "idem-update-v2-1"
                     }
                     """))
@@ -242,12 +324,11 @@ class RuntimeApisWebTest {
                       "strategyId": "strategy-update-v2",
                       "name": "Version 2",
                       "scope": { "kind": "USERS", "userIds": ["user-1", "user-2"], "userGroupIds": [] },
-                      "rules": [
-                        { "field": "eventType", "operator": "EQ", "value": "ORDER_CREATED", "connector": "AND", "group": "root", "sortOrder": 1 }
-                      ],
+                      "eventType": "ORDER_CREATED",
                       "executionPlan": "plan-update-v2",
                       "expectedVersion": 1,
                       "userToken": "token-1",
+                      "threshold": 1,
                       "idempotencyKey": "idem-update-v2-2"
                     }
                     """))
@@ -268,6 +349,7 @@ class RuntimeApisWebTest {
                       "eventType": "PRODUCT_VIEW",
                       "executionPlan": "plan-stale",
                       "userToken": "token-1",
+                      "threshold": 1,
                       "idempotencyKey": "idem-stale-1"
                     }
                     """))
@@ -284,6 +366,7 @@ class RuntimeApisWebTest {
                       "executionPlan": "plan-stale",
                       "expectedVersion": 0,
                       "userToken": "token-1",
+                      "threshold": 1,
                       "idempotencyKey": "idem-stale-2"
                     }
                     """))
@@ -297,11 +380,10 @@ class RuntimeApisWebTest {
               "strategyId": "strategy-idem",
               "name": "Idempotency test",
               "scope": { "kind": "USERS", "userIds": ["user-1"], "userGroupIds": [] },
-              "rules": [
-                { "field": "eventType", "operator": "EQ", "value": "PRODUCT_VIEW", "connector": "AND", "group": "root", "sortOrder": 1 }
-              ],
+              "eventType": "PRODUCT_VIEW",
               "executionPlan": "plan-idem",
               "userToken": "token-1",
+              "threshold": 1,
               "idempotencyKey": "idem-key-same"
             }
             """;
@@ -331,7 +413,7 @@ class RuntimeApisWebTest {
                       "name": "Original name",
                       "scope": { "kind": "GLOBAL", "userIds": [], "userGroupIds": [] },
                       "eventType": "PRODUCT_VIEW",
-                      "executionPlan": "plan-idem-diff",
+                      "threshold": 1,
                       "userToken": "token-1",
                       "idempotencyKey": "idem-key-diff"
                     }
@@ -346,7 +428,7 @@ class RuntimeApisWebTest {
                       "name": "Changed name",
                       "scope": { "kind": "GLOBAL", "userIds": [], "userGroupIds": [] },
                       "eventType": "PRODUCT_VIEW",
-                      "executionPlan": "plan-idem-diff",
+                      "threshold": 1,
                       "userToken": "token-1",
                       "idempotencyKey": "idem-key-diff"
                     }

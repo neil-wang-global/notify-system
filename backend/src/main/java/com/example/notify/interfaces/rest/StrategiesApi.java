@@ -189,13 +189,15 @@ public final class StrategiesApi {
     }
 
     private RuleAst ruleAst(SaveStrategyRequest request) {
-        if (request.rules() != null && !request.rules().isEmpty()) {
-            List<StrategyRuleItem> items = request.rules().stream()
-                .map(this::toRuleItem)
-                .toList();
-            return RuleAst.fromRows(items);
+        RuleAst eventTypeNode = new RuleAst.Comparison("eventType", RuleOperator.EQ, request.eventType());
+        if (request.rules() == null || request.rules().isEmpty()) {
+            return eventTypeNode;
         }
-        return new RuleAst.Comparison("eventType", RuleOperator.EQ, request.eventType());
+        List<StrategyRuleItem> items = request.rules().stream()
+            .map(this::toRuleItem)
+            .toList();
+        RuleAst rulesTree = RuleAst.fromRows(items);
+        return new RuleAst.Group(RuleConnector.AND, List.of(eventTypeNode, rulesTree));
     }
 
     private StrategyRuleItem toRuleItem(RuleRowRequest row) {
@@ -231,8 +233,8 @@ public final class StrategiesApi {
         if (request.scope() == null || request.scope().kind() == null) {
             throw new IllegalArgumentException("scope must not be null");
         }
-        if ((request.rules() == null || request.rules().isEmpty()) && (request.eventType() == null || request.eventType().isBlank())) {
-            throw new IllegalArgumentException("eventType or rules must not be blank");
+        if (request.eventType() == null || request.eventType().isBlank()) {
+            throw new IllegalArgumentException("eventType must not be blank");
         }
         requireText(request.userToken(), "userToken");
         requireText(request.idempotencyKey(), "idempotencyKey");
@@ -333,7 +335,10 @@ public final class StrategiesApi {
 
     public record RuleItemResponse(String field, String operator, Object value, String connector, String group, int sortOrder) {
         static List<RuleItemResponse> from(RuleAst ast) {
-            return ruleRows(ast, "default", RuleConnector.AND, new java.util.concurrent.atomic.AtomicInteger(1));
+            return ruleRows(ast, "default", RuleConnector.AND, new java.util.concurrent.atomic.AtomicInteger(1))
+                .stream()
+                .filter(r -> !"eventType".equals(r.field))
+                .toList();
         }
 
         private static List<RuleItemResponse> ruleRows(RuleAst ast, String groupId, RuleConnector connector, java.util.concurrent.atomic.AtomicInteger sortOrder) {

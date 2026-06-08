@@ -45,8 +45,8 @@ function validate() {
   if (!['GLOBAL', 'USERS', 'USER_GROUPS'].includes(scopeKind.value)) {
     errors.scope = '范围必须为 GLOBAL / USERS / USER_GROUPS';
   }
-  if ((!eventType.value || !eventType.value.trim()) && rules.value.length === 0) {
-    errors.eventType = '无规则时事件类型不能为空';
+  if (!eventType.value || !eventType.value.trim()) {
+    errors.eventType = '事件类型不能为空';
   }
   if (threshold.value === null || threshold.value === '' || threshold.value <= 0) {
     errors.threshold = '阈值必须为正数';
@@ -143,7 +143,11 @@ async function openEdit(id) {
     windowSize.value = s.windowSize || '5m';
     threshold.value = s.threshold ?? 1;
     expectedVersion.value = s.version ?? 0;
-    rules.value = (s.rules || []).map(r => ({
+    const rawRules = s.rules || [];
+    const isEventTypeOnlyMatch = rawRules.length === 1
+      && rawRules[0].field === 'eventType'
+      && rawRules[0].operator === 'EQ';
+    rules.value = isEventTypeOnlyMatch ? [] : rawRules.map(r => ({
       field: r.field || '',
       operator: r.operator || 'EQ',
       value: Array.isArray(r.value) ? r.value.join(',') : (r.value || ''),
@@ -151,6 +155,9 @@ async function openEdit(id) {
       group: r.group || 'default',
       sortOrder: r.sortOrder ?? 0,
     }));
+    if (isEventTypeOnlyMatch && rawRules[0].value) {
+      eventType.value = String(rawRules[0].value);
+    }
     businessDedupWindowSeconds.value = s.businessDedupWindowSeconds ?? '';
     dedupFields.value = Array.isArray(s.dedupFields) ? s.dedupFields.join(', ') : '';
     mode.value = 'edit';
@@ -184,7 +191,7 @@ function buildBody() {
     strategyId: strategyId.value,
     name: name.value,
     scope,
-    eventType: eventType.value || undefined,
+    eventType: eventType.value,
     rules: rules.value.length > 0 ? rules.value.map(r => ({
       field: r.field,
       operator: r.operator,
@@ -325,7 +332,7 @@ onMounted(fetchList);
           <p v-if="validationErrors.scopeUserGroupIds" class="mt-1 text-xs text-rose-500">{{ validationErrors.scopeUserGroupIds }}</p>
         </div>
         <div>
-          <label class="mb-1 block text-slate-600">事件类型{{ rules.length > 0 ? '（有规则时可留空）' : '' }}</label>
+          <label class="mb-1 block text-slate-600">事件类型（必填）</label>
           <input v-model="eventType" class="w-full rounded-lg border p-2" :class="validationErrors.eventType ? 'border-rose-400' : 'border-slate-200'" placeholder="PRODUCT_VIEW" />
           <p v-if="validationErrors.eventType" class="mt-1 text-xs text-rose-500">{{ validationErrors.eventType }}</p>
         </div>
@@ -396,7 +403,7 @@ onMounted(fetchList);
             <button @click="removeRule(i)" class="text-rose-500 hover:text-rose-700 text-xs">删除</button>
           </div>
         </div>
-        <p v-else class="text-xs text-slate-400">暂无规则配置，将使用事件类型进行匹配。</p>
+        <p v-else class="text-xs text-slate-400">暂无规则配置，将仅使用事件类型进行匹配。</p>
       </div>
 
       <!-- Validation summary -->

@@ -37,6 +37,7 @@ class StrategiesGetWebTest {
                       "scope": { "kind": "GLOBAL", "userIds": [], "userGroupIds": [] },
                       "eventType": "PRODUCT_VIEW",
                       "userToken": "token-1",
+                      "threshold": 1,
                       "idempotencyKey": "idem-list-1"
                     }
                     """))
@@ -58,6 +59,7 @@ class StrategiesGetWebTest {
                       "scope": { "kind": "GLOBAL", "userIds": [], "userGroupIds": [] },
                       "eventType": "PRODUCT_VIEW",
                       "userToken": "token-1",
+                      "threshold": 1,
                       "idempotencyKey": "idem-get-1"
                     }
                     """))
