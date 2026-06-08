@@ -17,6 +17,8 @@ curl -sS -X POST "$BASE_URL/api/strategies" \
     "threshold": 3,
     "windowSize": "5m",
     "businessDedupWindowSeconds": 0,
+    "userToken": "perf-test-user",
+    "idempotencyKey": "perf-s1-key",
     "scope": {"kind": "GLOBAL"},
     "rules": []
   }' && echo " -> perf-s1 created"
@@ -31,6 +33,8 @@ curl -sS -X POST "$BASE_URL/api/strategies" \
     "threshold": 2,
     "windowSize": "5m",
     "businessDedupWindowSeconds": 0,
+    "userToken": "perf-test-user",
+    "idempotencyKey": "perf-s2-key",
     "scope": {"kind": "GLOBAL"},
     "rules": []
   }' && echo " -> perf-s2 created"
