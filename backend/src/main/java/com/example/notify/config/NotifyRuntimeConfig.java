@@ -34,6 +34,7 @@ import com.example.notify.domain.notification.NotificationEvents;
 import com.example.notify.domain.notification.NotificationRecord;
 import com.example.notify.domain.notification.NotificationRecords;
 import java.util.Optional;
+import java.util.function.Supplier;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -133,8 +134,41 @@ public class NotifyRuntimeConfig {
     }
 
     @Bean
-    StatusApi statusApi() {
-        return new StatusApi(StatusApi.StatusResponse.healthy());
+    DegradationState degradationState() {
+        return new DegradationState();
+    }
+
+    @Bean
+    StatusApi statusApi(DegradationState degradationState,
+                        @Autowired(required = false) org.springframework.kafka.core.KafkaAdmin kafkaAdmin,
+                        @Autowired(required = false) StringRedisTemplate redisTemplate) {
+        Supplier<String> kafkaStatus = () -> {
+            if (kafkaAdmin == null) {
+                return "DISABLED";
+            }
+            try {
+                kafkaAdmin.clusterId();
+                return "RUNNING";
+            } catch (Exception e) {
+                return "DOWN";
+            }
+        };
+
+        Supplier<String> redisStatus = () -> {
+            if (redisTemplate == null) {
+                return "DISABLED";
+            }
+            try {
+                redisTemplate.getConnectionFactory().getConnection().ping();
+                return "HEALTHY";
+            } catch (Exception e) {
+                return "DOWN";
+            }
+        };
+
+        Supplier<String> cacheVersion = () -> "unknown";
+
+        return new StatusApi(kafkaStatus, redisStatus, cacheVersion, degradationState);
     }
 
     // --- Redis strategy adapters (conditional on StringRedisTemplate availability) ---
