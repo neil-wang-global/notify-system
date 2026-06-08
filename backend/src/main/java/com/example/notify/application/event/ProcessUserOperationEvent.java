@@ -13,7 +13,7 @@ import com.example.notify.domain.strategy.StrategyId;
 import com.example.notify.engine.matching.EventSnapshot;
 import com.example.notify.engine.matching.RuleAstEvaluator;
 import com.example.notify.engine.timebox.TimeboxCommand;
-import com.example.notify.engine.timebox.TimeboxCounter;
+import com.example.notify.engine.timebox.TimeboxOperations;
 import com.example.notify.engine.timebox.TimeboxResult;
 import java.time.Instant;
 import java.util.List;
@@ -21,10 +21,10 @@ import java.util.List;
 public final class ProcessUserOperationEvent {
 
     private final RuleAstEvaluator evaluator;
-    private final TimeboxCounter counter;
+    private final TimeboxOperations counter;
     private final NotificationEvents notificationEvents;
 
-    public ProcessUserOperationEvent(RuleAstEvaluator evaluator, TimeboxCounter counter, NotificationEvents notificationEvents) {
+    public ProcessUserOperationEvent(RuleAstEvaluator evaluator, TimeboxOperations counter, NotificationEvents notificationEvents) {
         this.evaluator = evaluator;
         this.counter = counter;
         this.notificationEvents = notificationEvents;

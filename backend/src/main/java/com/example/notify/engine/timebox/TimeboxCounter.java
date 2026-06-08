@@ -7,12 +7,13 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-public final class TimeboxCounter {
+public final class TimeboxCounter implements TimeboxOperations {
 
     private final Set<String> processedEvents = new HashSet<>();
     private final Map<String, Instant> dedupKeys = new HashMap<>();
     private final Map<String, Map<Long, Integer>> bucketsByKey = new HashMap<>();
 
+    @Override
     public synchronized TimeboxResult apply(TimeboxCommand command) {
         Map<Long, Integer> buckets = bucketsByKey.computeIfAbsent(command.windowKey(), ignored -> new HashMap<>());
         removeExpiredBuckets(buckets, command);

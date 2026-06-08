@@ -28,11 +28,11 @@ public record TimeboxCommand(
         dedupDimensionsHash = dedupDimensionsHash.trim();
     }
 
-    String windowKey() {
+    public String windowKey() {
         return strategyId + ":" + customerId;
     }
 
-    String dedupKey() {
+    public String dedupKey() {
         return strategyId + ":" + customerId + ":" + dedupDimensionsHash;
     }
 

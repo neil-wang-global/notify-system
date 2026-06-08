@@ -14,6 +14,7 @@ import com.example.notify.domain.strategy.StrategyExecutionPlan;
 import com.example.notify.domain.strategy.StrategyId;
 import com.example.notify.engine.matching.RuleAstEvaluator;
 import com.example.notify.engine.timebox.TimeboxCounter;
+import com.example.notify.engine.timebox.TimeboxOperations;
 import java.time.Duration;
 import com.example.notify.infrastructure.persistence.JdbcNotificationExceptions;
 import com.example.notify.infrastructure.persistence.JdbcNotificationRecords;
@@ -22,6 +23,7 @@ import com.example.notify.infrastructure.persistence.JdbcUserOperationExceptions
 import com.example.notify.infrastructure.persistence.PersistenceSchema;
 import com.example.notify.infrastructure.redis.RealRedisStrategies;
 import com.example.notify.infrastructure.redis.RedisStrategies;
+import com.example.notify.infrastructure.redis.RedisTimeboxCounter;
 import com.example.notify.interfaces.rest.EventsApi;
 import com.example.notify.interfaces.rest.ExceptionsApi;
 import com.example.notify.interfaces.rest.NotificationsApi;
@@ -61,8 +63,20 @@ public class NotifyRuntimeConfig {
     }
 
     @Bean
-    ProcessUserOperationEvent processUserOperationEvent(NotificationRecords notificationRecords) {
-        return new ProcessUserOperationEvent(new RuleAstEvaluator(), new TimeboxCounter(), event -> notificationRecords.addIfAbsent(NotificationRecord.from(event)));
+    ProcessUserOperationEvent processUserOperationEvent(TimeboxOperations timeboxOperations, NotificationRecords notificationRecords) {
+        return new ProcessUserOperationEvent(new RuleAstEvaluator(), timeboxOperations, event -> notificationRecords.addIfAbsent(NotificationRecord.from(event)));
+    }
+
+    @Bean
+    @ConditionalOnBean(StringRedisTemplate.class)
+    TimeboxOperations redisTimeboxCounter(StringRedisTemplate redis) {
+        return new RedisTimeboxCounter(redis);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(TimeboxOperations.class)
+    TimeboxOperations inMemoryTimeboxCounter() {
+        return new TimeboxCounter();
     }
 
     @Bean
