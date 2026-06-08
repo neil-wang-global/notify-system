@@ -155,6 +155,21 @@ class SaveStrategyTest {
             fingerprints.put(idempotencyKey, fingerprint);
             saved.add(strategy);
         }
+
+        @Override
+        public Optional<IdempotencyEntry> findIdempotency(IdempotencyKey idempotencyKey) {
+            Strategy s = idempotencyKeys.get(idempotencyKey);
+            String fp = fingerprints.get(idempotencyKey);
+            if (s == null || fp == null) {
+                return Optional.empty();
+            }
+            return Optional.of(new IdempotencyEntry(s.id(), fp));
+        }
+
+        @Override
+        public void delete(StrategyId strategyId) {
+            strategies.remove(strategyId);
+        }
     }
 
     private static final class FixedUsers implements Users {

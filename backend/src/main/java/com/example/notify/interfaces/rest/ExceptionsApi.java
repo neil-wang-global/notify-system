@@ -2,6 +2,7 @@ package com.example.notify.interfaces.rest;
 
 import com.example.notify.domain.exception.NotificationExceptionRecord;
 import com.example.notify.domain.exception.UserOperationExceptionRecord;
+import java.time.Instant;
 import java.util.List;
 import java.util.function.Supplier;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,13 +25,56 @@ public final class ExceptionsApi {
     }
 
     @GetMapping("/user-operations")
-    public List<UserOperationExceptionRecord> userOperationExceptions() {
-        return List.copyOf(userOperationExceptions.get());
+    public List<UserOperationExceptionResponse> userOperationExceptions() {
+        return userOperationExceptions.get().stream()
+            .map(UserOperationExceptionResponse::from)
+            .toList();
     }
 
     @GetMapping("/notifications")
-    public List<NotificationExceptionRecord> notificationExceptions() {
-        return List.copyOf(notificationExceptions.get());
+    public List<NotificationExceptionResponse> notificationExceptions() {
+        return notificationExceptions.get().stream()
+            .map(NotificationExceptionResponse::from)
+            .toList();
+    }
+
+    public record UserOperationExceptionResponse(
+        String id, String eventId, String customerId, String eventType,
+        String payload, String failureReason, int retryCount, String status, Instant createdAt
+    ) {
+        static UserOperationExceptionResponse from(UserOperationExceptionRecord record) {
+            return new UserOperationExceptionResponse(
+                record.id(),
+                record.eventId().value(),
+                record.customerId().value(),
+                record.eventType().value(),
+                record.payload(),
+                record.failureReason(),
+                record.retryCount(),
+                record.status(),
+                record.createdAt()
+            );
+        }
+    }
+
+    public record NotificationExceptionResponse(
+        String id, String notificationId, String strategyId, String customerId, String eventId,
+        String payload, String failureReason, int retryCount, String status, Instant createdAt
+    ) {
+        static NotificationExceptionResponse from(NotificationExceptionRecord record) {
+            return new NotificationExceptionResponse(
+                record.id(),
+                record.notificationId().value(),
+                record.strategyId().value(),
+                record.customerId().value(),
+                record.eventId().value(),
+                record.payload(),
+                record.failureReason(),
+                record.retryCount(),
+                record.status(),
+                record.createdAt()
+            );
+        }
     }
 
 }

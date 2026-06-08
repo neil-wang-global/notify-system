@@ -1,11 +1,14 @@
 package com.example.notify.interfaces.kafka;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.example.notify.application.notification.PersistNotification;
+import com.example.notify.domain.notification.NotificationEvent;
 import com.example.notify.domain.notification.NotificationRecord;
 import com.example.notify.domain.notification.NotificationRecords;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -20,6 +23,7 @@ import org.springframework.kafka.support.Acknowledgment;
 class NotificationEventsConsumerTest {
 
     private NotificationRecords notificationRecords;
+    private PersistNotification persistNotification;
     private Acknowledgment ack;
     private ObjectMapper objectMapper;
     private NotificationEventsConsumer consumer;
@@ -27,9 +31,10 @@ class NotificationEventsConsumerTest {
     @BeforeEach
     void setUp() {
         notificationRecords = mock(NotificationRecords.class);
+        persistNotification = new PersistNotification(notificationRecords);
         ack = mock(Acknowledgment.class);
         objectMapper = new ObjectMapper();
-        consumer = new NotificationEventsConsumer(notificationRecords, objectMapper);
+        consumer = new NotificationEventsConsumer(persistNotification, objectMapper);
     }
 
     private static Map<String, Object> notificationEventMap(
@@ -88,8 +93,7 @@ class NotificationEventsConsumerTest {
         ));
         ConsumerRecord<String, String> record = new ConsumerRecord<>("notification-events", 0, 0, "cust-fail", json);
 
-        consumer.consume(record, ack);
-
+        assertThrows(RuntimeException.class, () -> consumer.consume(record, ack));
         verify(ack, never()).acknowledge();
     }
 
@@ -97,8 +101,7 @@ class NotificationEventsConsumerTest {
     void consumeDoesNotAckOnInvalidJson() {
         ConsumerRecord<String, String> record = new ConsumerRecord<>("notification-events", 0, 0, "key", "not-json");
 
-        consumer.consume(record, ack);
-
+        assertThrows(RuntimeException.class, () -> consumer.consume(record, ack));
         verify(ack, never()).acknowledge();
         verify(notificationRecords, never()).addIfAbsent(any(NotificationRecord.class));
     }
@@ -109,8 +112,7 @@ class NotificationEventsConsumerTest {
         String json = objectMapper.writeValueAsString(incomplete);
         ConsumerRecord<String, String> record = new ConsumerRecord<>("notification-events", 0, 0, "key", json);
 
-        consumer.consume(record, ack);
-
+        assertThrows(RuntimeException.class, () -> consumer.consume(record, ack));
         verify(ack, never()).acknowledge();
         verify(notificationRecords, never()).addIfAbsent(any(NotificationRecord.class));
     }

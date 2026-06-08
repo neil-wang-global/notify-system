@@ -21,3 +21,7 @@ export function updateStrategy(id, data) {
     body: JSON.stringify(data),
   });
 }
+
+export function deleteStrategy(id) {
+  return apiFetch(`/api/strategies/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}

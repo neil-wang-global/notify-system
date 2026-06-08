@@ -62,7 +62,7 @@ class RedisTimeboxCounterIT {
     @BeforeEach
     void setUp() {
         redisTemplate.getConnectionFactory().getConnection().serverCommands().flushAll();
-        counter = new RedisTimeboxCounter(redisTemplate);
+        counter = new RedisTimeboxCounter(redisTemplate, new com.example.notify.config.DegradationState());
     }
 
     @Test

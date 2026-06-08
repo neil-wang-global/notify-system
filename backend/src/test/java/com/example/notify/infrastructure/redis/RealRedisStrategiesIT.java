@@ -69,7 +69,7 @@ class RealRedisStrategiesIT {
     @BeforeEach
     void setUp() {
         redisTemplate.getConnectionFactory().getConnection().serverCommands().flushAll();
-        realRedisStrategies = new RealRedisStrategies(redisTemplate);
+        realRedisStrategies = new RealRedisStrategies(redisTemplate, new com.example.notify.config.DegradationState());
     }
 
     @Test

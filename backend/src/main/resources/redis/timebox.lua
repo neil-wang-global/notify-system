@@ -8,6 +8,7 @@
 -- ARGV[5] = shardSizeMs
 -- ARGV[6] = threshold
 -- ARGV[7] = ttlMs (windowSizeMs + shardSizeMs * 2)
+-- ARGV[8] = wallClockMs (current wall-clock time in ms)
 -- Returns: {triggered(0|1), currentCount, wasDuplicate(0|1)}
 
 -- Event idempotency check
@@ -29,16 +30,21 @@ end
 local currentBucket = ARGV[3]
 redis.call('HINCRBY', KEYS[3], currentBucket, 1)
 
--- Compute window sum
+-- Compute window sum using wall-clock time (T-18) and clean old buckets (T-17)
 local shardMs = tonumber(ARGV[5])
 local windowMs = tonumber(ARGV[4])
+local nowMs = tonumber(ARGV[8])
 local numBuckets = math.ceil(windowMs / shardMs)
 local sum = 0
-local nowMs = tonumber(currentBucket)
+local windowStart = nowMs - windowMs
 for i = 0, numBuckets - 1 do
     local bucketTs = tostring(nowMs - i * shardMs)
     local count = tonumber(redis.call('HGET', KEYS[3], bucketTs) or '0')
     sum = sum + count
+    -- T-17: delete buckets that fall outside the window
+    if tonumber(bucketTs) < windowStart then
+        redis.call('HDEL', KEYS[3], bucketTs)
+    end
 end
 
 -- Set TTL

@@ -1,6 +1,7 @@
 package com.example.notify.interfaces.kafka;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -122,8 +123,7 @@ class NotificationDltConsumerTest {
     void consumeDoesNotAckOnInvalidJson() {
         ConsumerRecord<String, String> record = new ConsumerRecord<>("notification-events-dlt", 0, 0, "key", "not-json");
 
-        consumer.consume(record, ack);
-
+        assertThrows(RuntimeException.class, () -> consumer.consume(record, ack));
         verify(ack, never()).acknowledge();
         verify(notificationExceptions, never()).add(any(NotificationExceptionRecord.class));
     }
@@ -149,8 +149,7 @@ class NotificationDltConsumerTest {
 
         ConsumerRecord<String, String> record = new ConsumerRecord<>("notification-events-dlt", 0, 0, "key", json);
 
-        consumer.consume(record, ack);
-
+        assertThrows(RuntimeException.class, () -> consumer.consume(record, ack));
         verify(ack, never()).acknowledge();
     }
 

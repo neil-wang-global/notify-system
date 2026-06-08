@@ -17,8 +17,12 @@ import com.example.notify.engine.timebox.TimeboxOperations;
 import com.example.notify.engine.timebox.TimeboxResult;
 import java.time.Instant;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class ProcessUserOperationEvent {
+
+    private static final Logger log = LoggerFactory.getLogger(ProcessUserOperationEvent.class);
 
     private final RuleAstEvaluator evaluator;
     private final TimeboxOperations counter;
@@ -31,23 +35,32 @@ public final class ProcessUserOperationEvent {
     }
 
     public void process(EventId eventId, EventSnapshot snapshot, List<MatchedStrategy> matchedStrategies, Instant occurredAt) {
+        int failureCount = 0;
         for (MatchedStrategy matchedStrategy : matchedStrategies) {
-            if (evaluator.matches(matchedStrategy.ruleAst(), snapshot)) {
-                TimeboxResult result = counter.apply(new TimeboxCommand(
-                    matchedStrategy.strategyId(),
-                    new CustomerId(snapshot.customerId()),
-                    dedupDimensionsHash(matchedStrategy.executionPlan(), snapshot),
-                    eventId,
-                    occurredAt,
-                    matchedStrategy.executionPlan().windowSize(),
-                    matchedStrategy.executionPlan().shardSize(),
-                    matchedStrategy.executionPlan().businessDedupWindow(),
-                    matchedStrategy.threshold()
-                ));
-                if (result.triggered()) {
-                    notificationEvents.publish(notification(matchedStrategy, eventId, snapshot, occurredAt, result));
+            try {
+                if (evaluator.matches(matchedStrategy.ruleAst(), snapshot)) {
+                    TimeboxResult result = counter.apply(new TimeboxCommand(
+                        matchedStrategy.strategyId(),
+                        new CustomerId(snapshot.customerId()),
+                        dedupDimensionsHash(matchedStrategy.executionPlan(), snapshot),
+                        eventId,
+                        occurredAt,
+                        matchedStrategy.executionPlan().windowSize(),
+                        matchedStrategy.executionPlan().shardSize(),
+                        matchedStrategy.executionPlan().businessDedupWindow(),
+                        matchedStrategy.threshold()
+                    ));
+                    if (result.triggered()) {
+                        notificationEvents.publish(notification(matchedStrategy, eventId, snapshot, occurredAt, result));
+                    }
                 }
+            } catch (Exception e) {
+                failureCount++;
+                log.error("Failed to process strategy {} for event {}: {}", matchedStrategy.strategyId(), eventId, e.getMessage(), e);
             }
+        }
+        if (failureCount == matchedStrategies.size() && !matchedStrategies.isEmpty()) {
+            throw new IllegalStateException("All strategies failed for event " + eventId);
         }
     }
 
@@ -63,7 +76,8 @@ public final class ProcessUserOperationEvent {
     }
 
     private static NotificationEvent notification(MatchedStrategy matchedStrategy, EventId eventId, EventSnapshot snapshot, Instant occurredAt, TimeboxResult result) {
-        String dedupeKey = matchedStrategy.strategyId() + ":" + eventId;
+        String dedupDimensionsHash = dedupDimensionsHash(matchedStrategy.executionPlan(), snapshot);
+        String dedupeKey = matchedStrategy.strategyId() + ":" + snapshot.customerId() + ":" + dedupDimensionsHash;
         return new NotificationEvent(
             new NotificationId("notification-" + dedupeKey),
             matchedStrategy.strategyId(),
@@ -85,6 +99,10 @@ public final class ProcessUserOperationEvent {
             if (strategyId == null || ruleAst == null || executionPlan == null || threshold < 1) {
                 throw new IllegalArgumentException("matched strategy is incomplete");
             }
+        }
+
+        public static MatchedStrategy from(com.example.notify.domain.strategy.Strategy strategy) {
+            return new MatchedStrategy(strategy.id(), strategy.ruleAst(), strategy.executionPlan(), strategy.threshold());
         }
 
     }

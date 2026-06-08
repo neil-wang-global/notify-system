@@ -1,6 +1,8 @@
 package com.example.notify.interfaces.rest;
 
+import com.example.notify.domain.notification.NotificationEvent;
 import com.example.notify.domain.notification.NotificationRecord;
+import java.time.Instant;
 import java.util.List;
 import java.util.function.Supplier;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,8 +23,30 @@ public final class NotificationsApi {
     }
 
     @GetMapping
-    public List<NotificationRecord> list() {
-        return List.copyOf(records.get());
+    public List<NotificationResponse> list() {
+        return records.get().stream()
+            .map(NotificationResponse::from)
+            .toList();
+    }
+
+    public record NotificationResponse(
+        String notificationId, String strategyId, String customerId, String userId,
+        String eventId, String eventType, Instant triggeredAt, int currentCount, int threshold
+    ) {
+        static NotificationResponse from(NotificationRecord record) {
+            NotificationEvent event = record.event();
+            return new NotificationResponse(
+                event.notificationId().value(),
+                event.strategyId().value(),
+                event.customerId().value(),
+                event.userId().value(),
+                event.eventId().value(),
+                event.eventType().value(),
+                event.triggeredAt(),
+                event.currentCount(),
+                event.threshold()
+            );
+        }
     }
 
 }

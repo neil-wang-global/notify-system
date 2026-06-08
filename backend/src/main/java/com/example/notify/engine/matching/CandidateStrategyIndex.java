@@ -49,7 +49,7 @@ public final class CandidateStrategyIndex {
         scopeCandidates.retainAll(eventCandidates);
         for (Map.Entry<String, String> field : snapshot.fields().entrySet()) {
             Set<StrategyId> fieldCandidates = fieldStrategies.get(field.getKey() + ':' + field.getValue());
-            if (fieldCandidates != null) {
+            if (fieldCandidates != null && !fieldCandidates.isEmpty()) {
                 scopeCandidates.retainAll(fieldCandidates);
             }
         }

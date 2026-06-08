@@ -93,7 +93,7 @@ class FullNotificationFlowIT extends AbstractIntegrationTest {
         saveStrategyViaJdbc();
 
         // Step 2: Refresh Redis strategy cache so the strategy is discoverable.
-        RealRedisStrategies realRedisStrategies = new RealRedisStrategies(redisTemplate);
+        RealRedisStrategies realRedisStrategies = new RealRedisStrategies(redisTemplate, new com.example.notify.config.DegradationState());
         Strategy domainStrategy = new Strategy(STRATEGY_ID,
                 new com.example.notify.domain.strategy.StrategyName("test"),
                 StrategyScope.global(),

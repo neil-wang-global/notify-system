@@ -35,7 +35,7 @@ class JdbcSaveStrategyTest {
         DataSource dataSource = new DriverManagerDataSource("jdbc:h2:mem:jdbc-save-strategy-" + System.nanoTime() + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", "");
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         new PersistenceSchema(jdbc).create();
-        strategies = new JdbcStrategies(jdbc);
+        strategies = new JdbcStrategies(jdbc, new org.springframework.jdbc.datasource.DataSourceTransactionManager(jdbc.getDataSource()));
         Users users = token -> new User(new UserId(token.toString()), List.of());
         saveStrategy = new SaveStrategy(strategies, users);
     }

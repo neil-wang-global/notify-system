@@ -7,6 +7,7 @@ import com.example.notify.domain.strategy.Strategy;
 import com.example.notify.domain.strategy.StrategyExecutionPlan;
 import com.example.notify.domain.strategy.StrategyId;
 import com.example.notify.domain.strategy.StrategyScope;
+import com.example.notify.engine.matching.CandidateStrategyLookup;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
@@ -52,6 +53,17 @@ public final class RedisStrategies implements CandidateStrategyLookup {
         scopeCandidates.retainAll(eventTypeIndex.strategies(new EventType(eventType)));
         for (Map.Entry<String, String> e : fields.entrySet()) { scopeCandidates.retainAll(fieldIndex.strategies(e.getKey(), e.getValue())); }
         return Set.copyOf(scopeCandidates);
+    }
+
+    @Override
+    public void evict(StrategyId strategyId) {
+        if (strategyId == null) { throw new IllegalArgumentException("strategyId must not be null"); }
+        RedisStrategy existing = strategies.remove(strategyId);
+        if (existing != null) {
+            scopeIndex.remove(existing.strategyId(), existing.scope());
+            eventTypeIndex.remove(existing.eventType(), existing.strategyId());
+            for (RedisFieldIndex fi : existing.fieldIndexes()) { fieldIndex.remove(fi.field(), fi.value(), existing.strategyId()); }
+        }
     }
 
     public ScopeIndex scopeIndex() { return scopeIndex; }

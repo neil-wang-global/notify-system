@@ -125,6 +125,21 @@ public final class PersistenceSchema {
                 updated_at timestamp with time zone not null
             )
             """);
+
+        // T-29: indexes for common query patterns
+        createIndexIfNotExists("idx_strategies_version", "strategies (version)");
+        createIndexIfNotExists("idx_notification_records_strategy_id", "notification_records (strategy_id)");
+        createIndexIfNotExists("idx_notification_records_customer_id", "notification_records (customer_id)");
+        createIndexIfNotExists("idx_notification_records_triggered_at", "notification_records (triggered_at)");
+        createIndexIfNotExists("idx_strategy_idempotency_keys_strategy_id", "strategy_idempotency_keys (strategy_id)");
+    }
+
+    private void createIndexIfNotExists(String indexName, String columns) {
+        try {
+            jdbc.execute("create index if not exists " + indexName + " on " + columns);
+        } catch (Exception ignored) {
+            // Some databases may not support IF NOT EXISTS for indexes; safe to skip
+        }
     }
 
 }

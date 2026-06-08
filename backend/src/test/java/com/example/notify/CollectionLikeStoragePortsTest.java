@@ -13,17 +13,14 @@ class CollectionLikeStoragePortsTest {
 
     private static final String[] DOMAIN_PORTS = {
         "com.example.notify.domain.strategy.Strategies",
-        "com.example.notify.domain.notification.Notifications",
         "com.example.notify.domain.exception.UserOperationExceptions",
         "com.example.notify.domain.exception.NotificationExceptions",
         "com.example.notify.domain.event.Users"
     };
 
     private static final String[] INFRASTRUCTURE_TYPES = {
-        "com.example.notify.infrastructure.persistence.DbStrategies",
-        "com.example.notify.infrastructure.persistence.DbStrategy",
-        "com.example.notify.infrastructure.cache.CacheStrategies",
-        "com.example.notify.infrastructure.cache.CacheStrategy"
+        "com.example.notify.infrastructure.persistence.JdbcStrategies",
+        "com.example.notify.infrastructure.cache.CacheStrategies"
     };
 
     @Test
@@ -44,10 +41,10 @@ class CollectionLikeStoragePortsTest {
             assertFalse(type.getSimpleName().endsWith("Repository"), infrastructureType + " must not use repository naming");
         }
 
-        Class<?> dbStrategies = assertDoesNotThrow(() -> Class.forName("com.example.notify.infrastructure.persistence.DbStrategies"));
+        Class<?> jdbcStrategies = assertDoesNotThrow(() -> Class.forName("com.example.notify.infrastructure.persistence.JdbcStrategies"));
         Class<?> cacheStrategies = assertDoesNotThrow(() -> Class.forName("com.example.notify.infrastructure.cache.CacheStrategies"));
 
-        assertTrue(Modifier.isFinal(dbStrategies.getModifiers()));
+        assertTrue(Modifier.isFinal(jdbcStrategies.getModifiers()));
         assertTrue(Modifier.isFinal(cacheStrategies.getModifiers()));
     }
 

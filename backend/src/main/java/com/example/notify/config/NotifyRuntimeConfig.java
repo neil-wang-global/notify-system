@@ -1,22 +1,27 @@
 package com.example.notify.config;
 
+import com.example.notify.application.notification.PersistNotification;
+import com.example.notify.application.port.CacheInvalidationPort;
 import com.example.notify.application.event.ProcessUserOperationEvent;
+import com.example.notify.application.event.StrategySavedListener;
 import com.example.notify.application.strategy.SaveStrategy;
 import com.example.notify.domain.event.User;
 import com.example.notify.domain.event.UserId;
 import com.example.notify.domain.event.Users;
-import com.example.notify.domain.notification.NotificationRecord;
 import com.example.notify.domain.notification.NotificationRecords;
 import com.example.notify.domain.strategy.Strategies;
+import com.example.notify.domain.strategy.StrategyId;
 import com.example.notify.engine.matching.RuleAstEvaluator;
 import com.example.notify.engine.timebox.TimeboxCounter;
 import com.example.notify.engine.timebox.TimeboxOperations;
+import com.example.notify.infrastructure.cache.CacheStrategies;
+import com.example.notify.infrastructure.cache.CacheStrategy;
 import com.example.notify.infrastructure.persistence.JdbcNotificationExceptions;
 import com.example.notify.infrastructure.persistence.JdbcNotificationRecords;
 import com.example.notify.infrastructure.persistence.JdbcStrategies;
 import com.example.notify.infrastructure.persistence.JdbcUserOperationExceptions;
 import com.example.notify.infrastructure.persistence.PersistenceSchema;
-import com.example.notify.infrastructure.redis.CandidateStrategyLookup;
+import com.example.notify.engine.matching.CandidateStrategyLookup;
 import com.example.notify.infrastructure.redis.RealRedisStrategies;
 import com.example.notify.infrastructure.redis.RedisStrategies;
 import com.example.notify.infrastructure.redis.RedisTimeboxCounter;
@@ -26,6 +31,10 @@ import com.example.notify.interfaces.rest.NotificationsApi;
 import com.example.notify.interfaces.rest.StatusApi;
 import com.example.notify.interfaces.rest.StrategiesApi;
 import com.example.notify.domain.notification.NotificationEvents;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import java.time.Duration;
+import java.util.Set;
 import java.util.function.Supplier;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -41,18 +50,49 @@ import org.springframework.jdbc.core.JdbcTemplate;
 public class NotifyRuntimeConfig {
 
     @Bean PersistenceSchema persistenceSchema(JdbcTemplate jdbcTemplate) { PersistenceSchema s = new PersistenceSchema(jdbcTemplate); s.create(); return s; }
-    @Bean Strategies strategies(JdbcTemplate jdbcTemplate) { return new JdbcStrategies(jdbcTemplate); }
+    @Bean Strategies strategies(JdbcTemplate jdbcTemplate, org.springframework.transaction.PlatformTransactionManager transactionManager) { return new JdbcStrategies(jdbcTemplate, transactionManager); }
     @Bean Users users() { return token -> new User(new UserId(token.toString()), java.util.List.of()); }
     @Bean SaveStrategy saveStrategy(Strategies strategies, Users users) { return new SaveStrategy(strategies, users); }
 
     @Bean
-    ProcessUserOperationEvent processUserOperationEvent(TimeboxOperations timeboxOperations, NotificationRecords notificationRecords, @Autowired(required = false) NotificationEvents notificationEvents) {
-        NotificationEvents effective = notificationEvents != null ? notificationEvents : event -> notificationRecords.addIfAbsent(NotificationRecord.from(event));
+    ProcessUserOperationEvent processUserOperationEvent(TimeboxOperations timeboxOperations, PersistNotification persistNotification, @Autowired(required = false) NotificationEvents notificationEvents) {
+        NotificationEvents effective = notificationEvents != null ? notificationEvents : persistNotification::persist;
         return new ProcessUserOperationEvent(new RuleAstEvaluator(), timeboxOperations, effective);
     }
 
-    @Bean @ConditionalOnBean(StringRedisTemplate.class) TimeboxOperations redisTimeboxCounter(StringRedisTemplate redis) { return new RedisTimeboxCounter(redis); }
+    @Bean @ConditionalOnBean(StringRedisTemplate.class) TimeboxOperations redisTimeboxCounter(StringRedisTemplate redis, DegradationState degradationState) { return new RedisTimeboxCounter(redis, degradationState); }
     @Bean @ConditionalOnMissingBean(TimeboxOperations.class) TimeboxOperations inMemoryTimeboxCounter() { return new TimeboxCounter(); }
+
+    // --- Caffeine local cache layer ---
+
+    @Bean
+    Cache<StrategyId, CacheStrategy> strategyLocalCache() {
+        return Caffeine.newBuilder()
+            .maximumSize(10_000)
+            .expireAfterWrite(Duration.ofMinutes(10))
+            .build();
+    }
+
+    @Bean
+    Cache<CacheStrategies.CandidateKey, Set<StrategyId>> candidateCache() {
+        return Caffeine.newBuilder()
+            .maximumSize(10_000)
+            .expireAfterWrite(Duration.ofSeconds(10))
+            .build();
+    }
+
+    @Bean
+    CandidateStrategyLookup candidateStrategyLookup(@Autowired(required = false) StringRedisTemplate redis, DegradationState degradationState, Cache<StrategyId, CacheStrategy> strategyLocalCache, Cache<CacheStrategies.CandidateKey, Set<StrategyId>> candidateCache) {
+        CandidateStrategyLookup delegate = redis != null ? new RealRedisStrategies(redis, degradationState) : new RedisStrategies();
+        return new CacheStrategies(delegate, strategyLocalCache, candidateCache);
+    }
+
+    @Bean
+    StrategySavedListener strategySavedListener(CacheInvalidationPort cacheInvalidation) {
+        return new StrategySavedListener(cacheInvalidation);
+    }
+
+    // --- REST API beans ---
 
     @Bean
     StrategiesApi strategiesApi(SaveStrategy saveStrategy, Strategies strategies, CandidateStrategyLookup candidateLookup, NotifyProperties properties, org.springframework.context.ApplicationEventPublisher eventPublisher) {
@@ -65,6 +105,7 @@ public class NotifyRuntimeConfig {
     }
 
     @Bean JdbcNotificationRecords notificationRecords(JdbcTemplate jdbc) { return new JdbcNotificationRecords(jdbc); }
+    @Bean PersistNotification persistNotification(NotificationRecords notificationRecords) { return new PersistNotification(notificationRecords); }
     @Bean JdbcUserOperationExceptions userOperationExceptions(JdbcTemplate jdbc) { return new JdbcUserOperationExceptions(jdbc); }
     @Bean JdbcNotificationExceptions notificationExceptions(JdbcTemplate jdbc) { return new JdbcNotificationExceptions(jdbc); }
     @Bean NotificationsApi notificationsApi(JdbcNotificationRecords records) { return new NotificationsApi(records::list); }
@@ -79,6 +120,4 @@ public class NotifyRuntimeConfig {
         return new StatusApi(kafkaStatus, redisStatus, strategyCacheVersion, degradationState);
     }
 
-    @Bean @ConditionalOnBean(StringRedisTemplate.class) RealRedisStrategies realRedisStrategies(StringRedisTemplate redis) { return new RealRedisStrategies(redis); }
-    @Bean @ConditionalOnMissingBean(StringRedisTemplate.class) RedisStrategies inMemoryRedisStrategies() { return new RedisStrategies(); }
 }

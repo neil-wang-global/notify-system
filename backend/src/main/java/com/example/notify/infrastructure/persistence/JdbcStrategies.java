@@ -18,12 +18,14 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 public final class JdbcStrategies implements Strategies {
@@ -34,20 +36,75 @@ public final class JdbcStrategies implements Strategies {
     private final TransactionTemplate transaction;
     private final boolean h2;
 
-    public JdbcStrategies(JdbcTemplate jdbc) {
+    public JdbcStrategies(JdbcTemplate jdbc, PlatformTransactionManager transactionManager) {
         if (jdbc == null) {
             throw new IllegalArgumentException("jdbcTemplate must not be null");
         }
+        if (transactionManager == null) {
+            throw new IllegalArgumentException("transactionManager must not be null");
+        }
         this.jdbc = jdbc;
-        this.transaction = new TransactionTemplate(new DataSourceTransactionManager(jdbc.getDataSource()));
+        this.transaction = new TransactionTemplate(transactionManager);
         this.h2 = isH2(jdbc);
     }
 
     @Override
     public List<Strategy> list() {
         return DataSourceRoleContext.read(() -> {
-            List<String> ids = jdbc.query("select id from strategies", (rs, rowNum) -> rs.getString("id"));
-            return ids.stream().map(id -> find(new StrategyId(id))).filter(Optional::isPresent).map(Optional::get).toList();
+            List<Strategy> strategies = jdbc.query("""
+                    select id, name, scope_kind, rule_field, rule_operator, rule_value, rule_ast_json,
+                           window_size_seconds, shard_size_seconds, business_dedup_seconds, dedup_fields_json,
+                           threshold, version
+                    from strategies order by id
+                    """,
+                (rs, rowNum) -> new Strategy(
+                    new StrategyId(rs.getString("id")),
+                    new StrategyName(rs.getString("name")),
+                    StrategyScope.global(),
+                    astFrom(rs.getString("rule_ast_json"), rs.getString("rule_field"), rs.getString("rule_operator"), rs.getString("rule_value")),
+                    new StrategyExecutionPlan(
+                        Duration.ofSeconds(rs.getLong("window_size_seconds")),
+                        Duration.ofSeconds(rs.getLong("shard_size_seconds")),
+                        Duration.ofSeconds(rs.getLong("business_dedup_seconds")),
+                        parseDedupFields(rs.getString("dedup_fields_json"))
+                    ),
+                    rs.getInt("threshold"),
+                    new StrategyVersion(rs.getInt("version"))
+                )
+            );
+            if (strategies.isEmpty()) {
+                return strategies;
+            }
+            Map<String, StrategyScope.Kind> scopeKinds = jdbc.query("select id, scope_kind from strategies",
+                (rs, rowNum) -> new Object[]{rs.getString("id"), StrategyScope.Kind.valueOf(rs.getString("scope_kind"))}
+            ).stream().collect(Collectors.toMap(
+                row -> (String) row[0],
+                row -> (StrategyScope.Kind) row[1]
+            ));
+            List<String[]> scopeRows = jdbc.query("select strategy_id, id_kind, scope_id from strategy_scope_ids",
+                (rs, rowNum) -> new String[]{rs.getString("strategy_id"), rs.getString("id_kind"), rs.getString("scope_id")}
+            );
+            Map<String, List<String[]>> scopeByStrategy = scopeRows.stream()
+                .collect(Collectors.groupingBy(row -> row[0]));
+            List<Strategy> result = new ArrayList<>(strategies.size());
+            for (Strategy s : strategies) {
+                String sid = s.id().toString();
+                StrategyScope.Kind kind = scopeKinds.getOrDefault(sid, StrategyScope.Kind.GLOBAL);
+                StrategyScope scope;
+                if (kind == StrategyScope.Kind.GLOBAL) {
+                    scope = StrategyScope.global();
+                } else {
+                    List<String[]> rows = scopeByStrategy.getOrDefault(sid, List.of());
+                    List<String> scopeIds = rows.stream().map(r -> r[2]).toList();
+                    scope = switch (kind) {
+                        case USERS -> StrategyScope.users(scopeIds.stream().map(UserId::new).toArray(UserId[]::new));
+                        case USER_GROUPS -> StrategyScope.userGroups(scopeIds.stream().map(UserGroupId::new).toArray(UserGroupId[]::new));
+                        case GLOBAL -> StrategyScope.global();
+                    };
+                }
+                result.add(new Strategy(s.id(), s.name(), scope, s.ruleAst(), s.executionPlan(), s.threshold(), s.version()));
+            }
+            return result;
         });
     }
 
@@ -113,28 +170,57 @@ public final class JdbcStrategies implements Strategies {
     }
 
     @Override
+    public Optional<Strategies.IdempotencyEntry> findIdempotency(IdempotencyKey idempotencyKey) {
+        return DataSourceRoleContext.read(() -> jdbc.query(
+                "select strategy_id, fingerprint from strategy_idempotency_keys where idempotency_key = ?",
+                (rs, rowNum) -> new Strategies.IdempotencyEntry(
+                    new StrategyId(rs.getString("strategy_id")),
+                    rs.getString("fingerprint")
+                ),
+                idempotencyKey.toString()
+            )
+            .stream()
+            .findFirst());
+    }
+
+    @Override
     public void save(Strategy strategy, IdempotencyKey idempotencyKey, String fingerprint) {
         DataSourceRoleContext.write(() -> transaction.executeWithoutResult(status -> saveInTransaction(strategy, idempotencyKey, fingerprint)));
+    }
+
+    @Override
+    public void delete(StrategyId strategyId) {
+        DataSourceRoleContext.write(() -> transaction.executeWithoutResult(status -> {
+            jdbc.update("delete from strategy_rule_items where strategy_id = ?", strategyId.toString());
+            jdbc.update("delete from strategy_scope_ids where strategy_id = ?", strategyId.toString());
+            jdbc.update("delete from strategy_idempotency_keys where strategy_id = ?", strategyId.toString());
+            jdbc.update("delete from strategies where id = ?", strategyId.toString());
+        }));
     }
 
     private void saveInTransaction(Strategy strategy, IdempotencyKey idempotencyKey, String fingerprint) {
         rejectStaleVersion(strategy);
         RuleAst.Comparison comparison = firstComparison(strategy.ruleAst());
-        int changed = jdbc.update(strategyUpsertSql(),
-            strategy.id().toString(),
-            strategy.name().value(),
-            strategy.scope().kind().name(),
-            comparison.field(),
-            comparison.operator().name(),
-            String.valueOf(comparison.value()),
-            astJson(strategy.ruleAst()),
-            strategy.executionPlan().windowSize().toSeconds(),
-            strategy.executionPlan().shardSize().toSeconds(),
-            strategy.executionPlan().businessDedupWindow().toSeconds(),
-            serializeDedupFields(strategy.executionPlan().dedupFields()),
-            strategy.threshold(),
-            strategy.version().value()
-        );
+        int changed;
+        if (h2) {
+            changed = saveH2(strategy, comparison);
+        } else {
+            changed = jdbc.update(strategyUpsertSql(),
+                strategy.id().toString(),
+                strategy.name().value(),
+                strategy.scope().kind().name(),
+                comparison.field(),
+                comparison.operator().name(),
+                String.valueOf(comparison.value()),
+                astJson(strategy.ruleAst()),
+                strategy.executionPlan().windowSize().toSeconds(),
+                strategy.executionPlan().shardSize().toSeconds(),
+                strategy.executionPlan().businessDedupWindow().toSeconds(),
+                serializeDedupFields(strategy.executionPlan().dedupFields()),
+                strategy.threshold(),
+                strategy.version().value()
+            );
+        }
         if (changed == 0) {
             throw new IllegalArgumentException("strategy version conflict");
         }
@@ -148,12 +234,101 @@ public final class JdbcStrategies implements Strategies {
         }
     }
 
+    /**
+     * T-25: Use direct JDBC query on the write connection for version checking,
+     * instead of calling find() which routes through DataSourceRoleContext.read().
+     */
     private void rejectStaleVersion(Strategy strategy) {
-        find(strategy.id()).ifPresent(existing -> {
-            if (existing.version().value() >= strategy.version().value()) {
-                throw new IllegalArgumentException("strategy version conflict");
-            }
-        });
+        Integer existingVersion = jdbc.query(
+            "select version from strategies where id = ?",
+            (rs, rowNum) -> rs.getInt("version"),
+            strategy.id().toString()
+        ).stream().findFirst().orElse(null);
+        if (existingVersion != null && existingVersion >= strategy.version().value()) {
+            throw new IllegalArgumentException("strategy version conflict");
+        }
+    }
+
+    /**
+     * T-26: For H2, use UPDATE with version check instead of MERGE INTO
+     * which does not support WHERE-based version guards.
+     */
+    private int saveH2(Strategy strategy, RuleAst.Comparison comparison) {
+        int updated = jdbc.update("""
+            update strategies set
+                name = ?, scope_kind = ?, rule_field = ?, rule_operator = ?, rule_value = ?, rule_ast_json = ?,
+                window_size_seconds = ?, shard_size_seconds = ?, business_dedup_seconds = ?, dedup_fields_json = ?,
+                threshold = ?, version = ?
+            where id = ? and version = ?
+            """,
+            strategy.name().value(),
+            strategy.scope().kind().name(),
+            comparison.field(),
+            comparison.operator().name(),
+            String.valueOf(comparison.value()),
+            astJson(strategy.ruleAst()),
+            strategy.executionPlan().windowSize().toSeconds(),
+            strategy.executionPlan().shardSize().toSeconds(),
+            strategy.executionPlan().businessDedupWindow().toSeconds(),
+            serializeDedupFields(strategy.executionPlan().dedupFields()),
+            strategy.threshold(),
+            strategy.version().value(),
+            strategy.id().toString(),
+            strategy.version().value() - 1
+        );
+        if (updated > 0) {
+            return updated;
+        }
+        // If update matched no rows, try insert (first time)
+        try {
+            return jdbc.update("""
+                insert into strategies (
+                    id, name, scope_kind, rule_field, rule_operator, rule_value, rule_ast_json,
+                    window_size_seconds, shard_size_seconds, business_dedup_seconds, dedup_fields_json,
+                    threshold, version
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                strategy.id().toString(),
+                strategy.name().value(),
+                strategy.scope().kind().name(),
+                comparison.field(),
+                comparison.operator().name(),
+                String.valueOf(comparison.value()),
+                astJson(strategy.ruleAst()),
+                strategy.executionPlan().windowSize().toSeconds(),
+                strategy.executionPlan().shardSize().toSeconds(),
+                strategy.executionPlan().businessDedupWindow().toSeconds(),
+                serializeDedupFields(strategy.executionPlan().dedupFields()),
+                strategy.threshold(),
+                strategy.version().value()
+            );
+        } catch (DuplicateKeyException e) {
+            return 0;
+        }
+    }
+
+    private String strategyUpsertSql() {
+        return """
+            insert into strategies (
+                id, name, scope_kind, rule_field, rule_operator, rule_value, rule_ast_json,
+                window_size_seconds, shard_size_seconds, business_dedup_seconds, dedup_fields_json,
+                threshold, version
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            on conflict (id) do update set
+                name = excluded.name,
+                scope_kind = excluded.scope_kind,
+                rule_field = excluded.rule_field,
+                rule_operator = excluded.rule_operator,
+                rule_value = excluded.rule_value,
+                rule_ast_json = excluded.rule_ast_json,
+                window_size_seconds = excluded.window_size_seconds,
+                shard_size_seconds = excluded.shard_size_seconds,
+                business_dedup_seconds = excluded.business_dedup_seconds,
+                dedup_fields_json = excluded.dedup_fields_json,
+                threshold = excluded.threshold,
+                version = excluded.version
+            where strategies.version = excluded.version - 1
+            """;
     }
 
     private void persistRuleRows(StrategyId strategyId, RuleAst ast) {
@@ -188,39 +363,6 @@ public final class JdbcStrategies implements Strategies {
                 }
             }
         }
-    }
-
-    private String strategyUpsertSql() {
-        if (h2) {
-            return """
-                merge into strategies (
-                    id, name, scope_kind, rule_field, rule_operator, rule_value, rule_ast_json,
-                    window_size_seconds, shard_size_seconds, business_dedup_seconds, dedup_fields_json,
-                    threshold, version
-                ) key(id) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """;
-        }
-        return """
-            insert into strategies (
-                id, name, scope_kind, rule_field, rule_operator, rule_value, rule_ast_json,
-                window_size_seconds, shard_size_seconds, business_dedup_seconds, dedup_fields_json,
-                threshold, version
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            on conflict (id) do update set
-                name = excluded.name,
-                scope_kind = excluded.scope_kind,
-                rule_field = excluded.rule_field,
-                rule_operator = excluded.rule_operator,
-                rule_value = excluded.rule_value,
-                rule_ast_json = excluded.rule_ast_json,
-                window_size_seconds = excluded.window_size_seconds,
-                shard_size_seconds = excluded.shard_size_seconds,
-                business_dedup_seconds = excluded.business_dedup_seconds,
-                dedup_fields_json = excluded.dedup_fields_json,
-                threshold = excluded.threshold,
-                version = excluded.version
-            where strategies.version = excluded.version - 1
-            """;
     }
 
     private static RuleAst.Comparison firstComparison(RuleAst ast) {

@@ -40,12 +40,14 @@ public final class SaveStrategy {
         command.validate();
         String fingerprint = command.fingerprint();
         User actor = users.resolve(command.userToken());
-        Optional<Strategy> duplicate = strategies.findByIdempotencyKey(command.idempotencyKey());
-        if (duplicate.isPresent()) {
-            if (!strategies.fingerprint(command.idempotencyKey()).orElseThrow().equals(fingerprint)) {
+        Optional<Strategies.IdempotencyEntry> idempotency = strategies.findIdempotency(command.idempotencyKey());
+        if (idempotency.isPresent()) {
+            Strategies.IdempotencyEntry entry = idempotency.get();
+            if (!entry.fingerprint().equals(fingerprint)) {
                 throw new IllegalArgumentException("idempotency key was used with a different request");
             }
-            return new Result(duplicate.get(), actor, List.of());
+            Strategy existing = strategies.find(entry.strategyId()).orElseThrow();
+            return new Result(existing, actor, List.of());
         }
 
         Strategy strategy = nextStrategy(command);

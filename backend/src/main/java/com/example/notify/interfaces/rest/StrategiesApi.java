@@ -20,13 +20,14 @@ import com.example.notify.domain.strategy.StrategyRuleItem;
 import com.example.notify.domain.strategy.StrategyScope;
 import com.example.notify.domain.strategy.StrategyVersion;
 import com.example.notify.domain.strategy.StrategySaved;
-import com.example.notify.infrastructure.redis.CandidateStrategyLookup;
+import com.example.notify.engine.matching.CandidateStrategyLookup;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -49,6 +50,20 @@ public final class StrategiesApi {
         "1d", Duration.ofDays(1),
         "5d", Duration.ofDays(5)
     );
+
+    private static final Map<Duration, String> WINDOW_KEYS = WINDOW_DURATIONS.entrySet().stream()
+        .collect(java.util.stream.Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
+
+    private static String formatWindowSize(Duration d) {
+        String key = WINDOW_KEYS.get(d);
+        if (key != null) {
+            return key;
+        }
+        if (d.toDays() > 0) return d.toDays() + "d";
+        if (d.toHours() > 0) return d.toHours() + "h";
+        if (d.toMinutes() > 0) return d.toMinutes() + "m";
+        return d.toSeconds() + "s";
+    }
 
     private final SaveStrategy saveStrategy;
     private final Strategies strategies;
@@ -107,6 +122,14 @@ public final class StrategiesApi {
         candidateLookup.refresh(result.strategy());
         eventPublisher.publishEvent(new StrategySaved(result.strategy().id(), result.strategy().version(), Instant.now()));
         return StrategySaveResponse.from(result);
+    }
+
+    @DeleteMapping("/{strategyId}")
+    public void delete(@PathVariable String strategyId) {
+        StrategyId id = new StrategyId(strategyId);
+        strategies.find(id).orElseThrow(() -> new IllegalArgumentException("strategy not found: " + strategyId));
+        candidateLookup.evict(id);
+        strategies.delete(id);
     }
 
     private SaveStrategy.Command command(StrategyId strategyId, SaveStrategyRequest request, Optional<StrategyVersion> version) {
@@ -176,13 +199,19 @@ public final class StrategiesApi {
     }
 
     private StrategyRuleItem toRuleItem(RuleRowRequest row) {
-        RuleValue value = row.value() instanceof List<?> list
-            ? list.stream().allMatch(Number.class::isInstance)
+        RuleValue value;
+        if (row.value() instanceof List<?> list) {
+            if (list.size() < 2) {
+                throw new IllegalArgumentException("rule value list must contain at least 2 elements, got " + list.size());
+            }
+            value = list.stream().allMatch(Number.class::isInstance)
                 ? RuleValue.ofNumbers((Number) list.getFirst(), (Number) list.get(1), list.subList(2, list.size()).stream().map(n -> (Number) n).toArray(Number[]::new))
-                : RuleValue.ofStrings(String.valueOf(list.getFirst()), String.valueOf(list.get(1)), list.subList(2, list.size()).stream().map(String::valueOf).toArray(String[]::new))
-            : row.value() instanceof Number num
-                ? RuleValue.ofNumber(num)
-                : RuleValue.ofString(String.valueOf(row.value()));
+                : RuleValue.ofStrings(String.valueOf(list.getFirst()), String.valueOf(list.get(1)), list.subList(2, list.size()).stream().map(String::valueOf).toArray(String[]::new));
+        } else if (row.value() instanceof Number num) {
+            value = RuleValue.ofNumber(num);
+        } else {
+            value = RuleValue.ofString(String.valueOf(row.value()));
+        }
         return StrategyRuleItem.condition(
             row.field(),
             RuleOperator.valueOf(row.operator()),
@@ -207,6 +236,9 @@ public final class StrategiesApi {
         }
         requireText(request.userToken(), "userToken");
         requireText(request.idempotencyKey(), "idempotencyKey");
+        if (request.threshold() < 1) {
+            throw new IllegalArgumentException("threshold must be at least 1, got " + request.threshold());
+        }
     }
 
     private static void requireText(String value, String name) {
@@ -233,9 +265,7 @@ public final class StrategiesApi {
         List<String> dedupFields
     ) {
         public SaveStrategyRequest {
-            if (threshold < 1) {
-                threshold = 1;
-            }
+            // threshold validation is handled in validate()
         }
     }
 
@@ -269,17 +299,68 @@ public final class StrategiesApi {
         }
     }
 
-    public record StrategyListResponse(String strategyId, String name, String scope, String eventType, int threshold, int version) {
+    public record StrategyListResponse(String strategyId, String name, ScopeResponse scope, String eventType, String windowSize, int threshold, int version) {
         static StrategyListResponse from(Strategy s) {
-            String eventType = s.ruleAst() instanceof RuleAst.Comparison c ? c.field().equals("eventType") ? String.valueOf(c.value()) : "" : "";
-            return new StrategyListResponse(s.id().toString(), s.name().value(), s.scope().kind().name(), eventType, s.threshold(), s.version().value());
+            String eventType = extractEventType(s.ruleAst());
+            String windowSize = formatWindowSize(s.executionPlan().windowSize());
+            return new StrategyListResponse(s.id().toString(), s.name().value(), ScopeResponse.from(s.scope()), eventType, windowSize, s.threshold(), s.version().value());
         }
     }
 
-    public record StrategyDetailResponse(String strategyId, String name, String scope, int threshold, int version, Object ruleAst, String executionPlan) {
+    public record StrategyDetailResponse(
+        String strategyId, String name, ScopeResponse scope, String eventType, String windowSize,
+        int threshold, int version, Object ruleAst, String executionPlan, List<RuleItemResponse> rules
+    ) {
         static StrategyDetailResponse from(Strategy s) {
-            return new StrategyDetailResponse(s.id().toString(), s.name().value(), s.scope().kind().name(), s.threshold(), s.version().value(), s.ruleAst(), s.executionPlan().toString());
+            String eventType = extractEventType(s.ruleAst());
+            String windowSize = formatWindowSize(s.executionPlan().windowSize());
+            return new StrategyDetailResponse(
+                s.id().toString(), s.name().value(), ScopeResponse.from(s.scope()), eventType, windowSize,
+                s.threshold(), s.version().value(), s.ruleAst(), s.executionPlan().toString(), RuleItemResponse.from(s.ruleAst())
+            );
         }
+    }
+
+    public record ScopeResponse(String kind, List<String> userIds, List<String> userGroupIds) {
+        static ScopeResponse from(StrategyScope scope) {
+            return new ScopeResponse(
+                scope.kind().name(),
+                scope.userIds().stream().map(UserId::value).toList(),
+                scope.userGroupIds().stream().map(UserGroupId::value).toList()
+            );
+        }
+    }
+
+    public record RuleItemResponse(String field, String operator, Object value, String connector, String group, int sortOrder) {
+        static List<RuleItemResponse> from(RuleAst ast) {
+            return ruleRows(ast, "default", RuleConnector.AND, new java.util.concurrent.atomic.AtomicInteger(1));
+        }
+
+        private static List<RuleItemResponse> ruleRows(RuleAst ast, String groupId, RuleConnector connector, java.util.concurrent.atomic.AtomicInteger sortOrder) {
+            return switch (ast) {
+                case RuleAst.Comparison c -> List.of(new RuleItemResponse(c.field(), c.operator().name(), c.value(), connector.name(), groupId, sortOrder.getAndIncrement()));
+                case RuleAst.Not n -> ruleRows(n.child(), groupId, connector, sortOrder);
+                case RuleAst.Group g -> g.children().stream()
+                    .flatMap(child -> ruleRows(child, groupId, g.connector(), sortOrder).stream())
+                    .toList();
+            };
+        }
+    }
+
+    private static String extractEventType(RuleAst ast) {
+        return switch (ast) {
+            case RuleAst.Comparison c when "eventType".equals(c.field()) -> String.valueOf(c.value());
+            case RuleAst.Comparison c -> "";
+            case RuleAst.Group g -> {
+                String result = "";
+                for (RuleAst child : g.children()) {
+                    result = extractEventType(child);
+                    if (!result.isEmpty()) break;
+                }
+                yield result;
+            }
+            case RuleAst.Not n -> extractEventType(n.child());
+        };
     }
 
 }

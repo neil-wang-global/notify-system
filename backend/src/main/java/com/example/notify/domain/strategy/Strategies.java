@@ -13,6 +13,12 @@ public interface Strategies {
 
     Optional<String> fingerprint(IdempotencyKey idempotencyKey);
 
+    Optional<IdempotencyEntry> findIdempotency(IdempotencyKey idempotencyKey);
+
     void save(Strategy strategy, IdempotencyKey idempotencyKey, String fingerprint);
+
+    void delete(StrategyId strategyId);
+
+    record IdempotencyEntry(StrategyId strategyId, String fingerprint) {}
 
 }

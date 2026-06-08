@@ -15,7 +15,7 @@ import com.example.notify.domain.strategy.Strategy;
 import com.example.notify.domain.strategy.StrategyName;
 import com.example.notify.domain.strategy.StrategyScope;
 import com.example.notify.domain.strategy.StrategyVersion;
-import com.example.notify.infrastructure.redis.CandidateStrategyLookup;
+import com.example.notify.engine.matching.CandidateStrategyLookup;
 import com.example.notify.infrastructure.redis.RedisStrategies;
 import com.example.notify.engine.matching.RuleAstEvaluator;
 import com.example.notify.engine.timebox.TimeboxCounter;
@@ -40,7 +40,7 @@ class NotifySystemE2ETest {
             new StrategyId("strategy-1"),
             new RuleAst.Comparison("productId", RuleOperator.EQ, "P001"),
             new StrategyExecutionPlan(Duration.ofSeconds(30), Duration.ofSeconds(10), Duration.ZERO, List.of("customerId", "userId", "eventType", "productId")),
-            2
+            1
         );
 
         RedisStrategies candidateLookup = new RedisStrategies();
@@ -50,7 +50,7 @@ class NotifySystemE2ETest {
         Strategy domainStrategy = new Strategy(new StrategyId("strategy-1"), new StrategyName("test"),
             StrategyScope.global(), ast,
             new StrategyExecutionPlan(Duration.ofSeconds(30), Duration.ofSeconds(10), Duration.ZERO, List.of("customerId", "userId", "eventType", "productId")),
-            2,
+            1,
             new StrategyVersion(1));
         candidateLookup.refresh(domainStrategy);
 
@@ -99,7 +99,9 @@ class NotifySystemE2ETest {
         @Override public Optional<Strategy> find(StrategyId id) { return Optional.ofNullable(store.get(id)); }
         @Override public Optional<Strategy> findByIdempotencyKey(com.example.notify.domain.strategy.IdempotencyKey key) { return Optional.empty(); }
         @Override public Optional<String> fingerprint(com.example.notify.domain.strategy.IdempotencyKey key) { return Optional.empty(); }
+        @Override public Optional<IdempotencyEntry> findIdempotency(com.example.notify.domain.strategy.IdempotencyKey key) { return Optional.empty(); }
         @Override public void save(Strategy s, com.example.notify.domain.strategy.IdempotencyKey key, String fp) { store.put(s.id(), s); }
+        @Override public void delete(StrategyId id) { store.remove(id); }
     }
 
 }

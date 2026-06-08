@@ -81,6 +81,7 @@ public class KafkaConfig {
             backOff
         );
         factory.setCommonErrorHandler(errorHandler);
+        factory.setConcurrency(3);
 
         return factory;
     }

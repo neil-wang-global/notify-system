@@ -5,8 +5,9 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [vue(), tailwindcss()],
   server: {
+    host: '0.0.0.0',
     proxy: {
-      '/api': 'http://host.docker.internal:8080',
+      '/api': 'http://localhost:8080',
     },
   },
 });

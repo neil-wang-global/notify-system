@@ -70,6 +70,7 @@ public class NotificationDltConsumer {
             log.info("persisted notification exception from DLT notificationId={}", notificationId);
         } catch (Exception e) {
             log.error("failed to process notification DLT message offset={}", record.offset(), e);
+            throw new RuntimeException(e);
         }
     }
 

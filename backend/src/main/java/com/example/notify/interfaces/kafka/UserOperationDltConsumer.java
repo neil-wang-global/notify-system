@@ -67,6 +67,7 @@ public class UserOperationDltConsumer {
             log.info("persisted user-operation exception from DLT eventId={}", eventId);
         } catch (Exception e) {
             log.error("failed to process user-operation DLT message offset={}", record.offset(), e);
+            throw new RuntimeException(e);
         }
     }
 

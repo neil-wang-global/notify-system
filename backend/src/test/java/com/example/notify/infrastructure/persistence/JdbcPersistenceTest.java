@@ -52,7 +52,7 @@ class JdbcPersistenceTest {
 
     @Test
     void jdbcStrategiesPersistStrategyAndIdempotencyFingerprint() {
-        JdbcStrategies strategies = new JdbcStrategies(jdbc);
+        JdbcStrategies strategies = new JdbcStrategies(jdbc, new org.springframework.jdbc.datasource.DataSourceTransactionManager(jdbc.getDataSource()));
         Strategy strategy = strategy("strategy-db-1", "PRODUCT_VIEW");
         IdempotencyKey idempotencyKey = new IdempotencyKey("idem-db-1");
 
@@ -73,7 +73,7 @@ class JdbcPersistenceTest {
                 return super.query(sql, rowMapper, args);
             }
         };
-        JdbcStrategies strategies = new JdbcStrategies(observingJdbc);
+        JdbcStrategies strategies = new JdbcStrategies(observingJdbc, new org.springframework.jdbc.datasource.DataSourceTransactionManager(observingJdbc.getDataSource()));
         strategies.save(strategy("strategy-db-read", "PRODUCT_VIEW"), new IdempotencyKey("idem-db-read"), "fingerprint-read");
 
         strategies.find(new StrategyId("strategy-db-read"));
@@ -113,7 +113,7 @@ class JdbcPersistenceTest {
     @Test
     void jdbcStrategiesRollBackStrategyWhenRuleRowsFail() {
         jdbc.execute("alter table strategy_rule_items add constraint reject_event_type_rule check (field <> 'eventType')");
-        JdbcStrategies strategies = new JdbcStrategies(jdbc);
+        JdbcStrategies strategies = new JdbcStrategies(jdbc, new org.springframework.jdbc.datasource.DataSourceTransactionManager(jdbc.getDataSource()));
 
         assertThrows(RuntimeException.class, () -> strategies.save(
             strategy("strategy-db-rollback", "PRODUCT_VIEW"),
@@ -127,7 +127,7 @@ class JdbcPersistenceTest {
 
     @Test
     void jdbcStrategiesRejectStaleVersionOverwrite() {
-        JdbcStrategies strategies = new JdbcStrategies(jdbc);
+        JdbcStrategies strategies = new JdbcStrategies(jdbc, new org.springframework.jdbc.datasource.DataSourceTransactionManager(jdbc.getDataSource()));
         Strategy created = strategy("strategy-db-lock", "PRODUCT_VIEW");
         Strategy updated = created.update(created.name(), created.scope(), created.ruleAst(), created.executionPlan(), created.threshold());
 
@@ -140,7 +140,7 @@ class JdbcPersistenceTest {
 
     @Test
     void jdbcStrategiesDoNotOverwriteExistingIdempotencyFingerprint() {
-        JdbcStrategies strategies = new JdbcStrategies(jdbc);
+        JdbcStrategies strategies = new JdbcStrategies(jdbc, new org.springframework.jdbc.datasource.DataSourceTransactionManager(jdbc.getDataSource()));
         IdempotencyKey idempotencyKey = new IdempotencyKey("idem-db-once");
 
         strategies.save(strategy("strategy-db-once-1", "PRODUCT_VIEW"), idempotencyKey, "fingerprint-1");
@@ -152,7 +152,7 @@ class JdbcPersistenceTest {
 
     @Test
     void jdbcStrategiesPersistGroupedRuleAst() {
-        JdbcStrategies strategies = new JdbcStrategies(jdbc);
+        JdbcStrategies strategies = new JdbcStrategies(jdbc, new org.springframework.jdbc.datasource.DataSourceTransactionManager(jdbc.getDataSource()));
         RuleAst ast = new RuleAst.Group(com.example.notify.domain.strategy.RuleConnector.AND, List.of(
             new RuleAst.Comparison("eventType", RuleOperator.EQ, "PRODUCT_VIEW"),
             new RuleAst.Comparison("productId", RuleOperator.EQ, "P001")
@@ -175,7 +175,7 @@ class JdbcPersistenceTest {
 
     @Test
     void jdbcStrategiesPersistScopeIds() {
-        JdbcStrategies strategies = new JdbcStrategies(jdbc);
+        JdbcStrategies strategies = new JdbcStrategies(jdbc, new org.springframework.jdbc.datasource.DataSourceTransactionManager(jdbc.getDataSource()));
         Strategy usersStrategy = Strategy.create(
             new StrategyId("strategy-db-users-scope"),
             new StrategyName("Users Scope Strategy"),
@@ -204,7 +204,7 @@ class JdbcPersistenceTest {
 
     @Test
     void jdbcStrategiesPreserveStructuredRuleValuesAfterRoundTrip() {
-        JdbcStrategies strategies = new JdbcStrategies(jdbc);
+        JdbcStrategies strategies = new JdbcStrategies(jdbc, new org.springframework.jdbc.datasource.DataSourceTransactionManager(jdbc.getDataSource()));
         RuleAst ast = new RuleAst.Group(com.example.notify.domain.strategy.RuleConnector.AND, List.of(
             new RuleAst.Comparison("eventType", RuleOperator.EQ, "PRODUCT_VIEW"),
             new RuleAst.Comparison("productId", RuleOperator.IN, List.of("P001", "P002"))

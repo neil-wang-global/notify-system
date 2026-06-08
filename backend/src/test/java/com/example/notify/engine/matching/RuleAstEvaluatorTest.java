@@ -1,7 +1,6 @@
 package com.example.notify.engine.matching;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.example.notify.domain.strategy.RuleAst;
@@ -37,13 +36,27 @@ class RuleAstEvaluatorTest {
     }
 
     @Test
-    void rejectsAttributesFields() {
-        EventSnapshot snapshot = new EventSnapshot("customer-1", "user-1", Set.of(), "PRODUCT_VIEW", Map.of("attributes.productId", "P001"));
+    void supportsAttributesFields() {
+        EventSnapshot snapshot = new EventSnapshot("customer-1", "user-1", Set.of(), "PRODUCT_VIEW", Map.of("productId", "P001"));
 
-        assertThrows(IllegalArgumentException.class, () -> new RuleAstEvaluator().matches(
+        boolean result = new RuleAstEvaluator().matches(
             new RuleAst.Comparison("attributes.productId", RuleOperator.EQ, "P001"),
             snapshot
-        ));
+        );
+
+        assertTrue(result);
+    }
+
+    @Test
+    void returnsFalseForMissingAttributesField() {
+        EventSnapshot snapshot = new EventSnapshot("customer-1", "user-1", Set.of(), "PRODUCT_VIEW", Map.of());
+
+        boolean result = new RuleAstEvaluator().matches(
+            new RuleAst.Comparison("attributes.productId", RuleOperator.EQ, "P001"),
+            snapshot
+        );
+
+        assertFalse(result);
     }
 
     @Test

@@ -1,14 +1,13 @@
 package com.example.notify.interfaces.kafka;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import com.example.notify.application.notification.PersistNotification;
 import com.example.notify.domain.event.CustomerId;
 import com.example.notify.domain.event.EventId;
 import com.example.notify.domain.event.EventType;
 import com.example.notify.domain.event.UserId;
 import com.example.notify.domain.notification.NotificationEvent;
 import com.example.notify.domain.notification.NotificationId;
-import com.example.notify.domain.notification.NotificationRecord;
-import com.example.notify.domain.notification.NotificationRecords;
 import com.example.notify.domain.strategy.StrategyId;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -26,12 +25,14 @@ public class NotificationEventsConsumer {
 
     private static final Logger log = LoggerFactory.getLogger(NotificationEventsConsumer.class);
 
-    private final NotificationRecords notificationRecords;
+    private final PersistNotification persistNotification;
     private final ObjectMapper objectMapper;
 
-    public NotificationEventsConsumer(NotificationRecords notificationRecords,
+    public NotificationEventsConsumer(PersistNotification persistNotification,
                                       ObjectMapper objectMapper) {
-        this.notificationRecords = notificationRecords;
+        if (persistNotification == null) { throw new IllegalArgumentException("persistNotification must not be null"); }
+        if (objectMapper == null) { throw new IllegalArgumentException("objectMapper must not be null"); }
+        this.persistNotification = persistNotification;
         this.objectMapper = objectMapper;
     }
 
@@ -55,7 +56,7 @@ public class NotificationEventsConsumer {
                 root.path("dedupeKey").asText()
             );
 
-            notificationRecords.addIfAbsent(NotificationRecord.from(event));
+            persistNotification.persist(event);
 
             ack.acknowledge();
             log.debug("acked notification-event notificationId={}", event.notificationId());
