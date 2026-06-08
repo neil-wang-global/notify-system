@@ -35,10 +35,12 @@ public final class ProcessUserOperationEvent {
     }
 
     public void process(EventId eventId, EventSnapshot snapshot, List<MatchedStrategy> matchedStrategies, Instant occurredAt) {
+        log.debug("process: eventId={} candidates={} eventType={}", eventId, matchedStrategies.size(), snapshot.eventType());
         int failureCount = 0;
         for (MatchedStrategy matchedStrategy : matchedStrategies) {
             try {
-                if (evaluator.matches(matchedStrategy.ruleAst(), snapshot)) {
+                boolean ruleMatch = evaluator.matches(matchedStrategy.ruleAst(), snapshot);
+                if (ruleMatch) {
                     TimeboxResult result = counter.apply(new TimeboxCommand(
                         matchedStrategy.strategyId(),
                         new CustomerId(snapshot.customerId()),
@@ -79,7 +81,7 @@ public final class ProcessUserOperationEvent {
         String dedupDimensionsHash = dedupDimensionsHash(matchedStrategy.executionPlan(), snapshot);
         String dedupeKey = matchedStrategy.strategyId() + ":" + snapshot.customerId() + ":" + dedupDimensionsHash;
         return new NotificationEvent(
-            new NotificationId("notification-" + dedupeKey),
+            new NotificationId("notification-" + dedupeKey + ":" + occurredAt.toEpochMilli()),
             matchedStrategy.strategyId(),
             new CustomerId(snapshot.customerId()),
             new UserId(snapshot.userId()),

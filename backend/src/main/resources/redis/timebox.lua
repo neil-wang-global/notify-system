@@ -1,6 +1,6 @@
--- KEYS[1] = processed:{eventId}
--- KEYS[2] = dedup:{strategyId}:{dedupHash}
--- KEYS[3] = timebox:{strategyId}:{customerId}:{dedupHash}
+-- KEYS[1] = processed:{windowKey}:eventId
+-- KEYS[2] = dedup:{windowKey}:dedupKey
+-- KEYS[3] = timebox:{windowKey}
 -- ARGV[1] = eventId
 -- ARGV[2] = dedupWindowMs (0 = disabled)
 -- ARGV[3] = currentBucketTimestamp (ms)
@@ -30,15 +30,15 @@ end
 local currentBucket = ARGV[3]
 redis.call('HINCRBY', KEYS[3], currentBucket, 1)
 
--- Compute window sum using wall-clock time (T-18) and clean old buckets (T-17)
+-- Compute window sum starting from currentBucket and clean old buckets (T-17)
 local shardMs = tonumber(ARGV[5])
 local windowMs = tonumber(ARGV[4])
-local nowMs = tonumber(ARGV[8])
+local currentBucket = tonumber(ARGV[3])
 local numBuckets = math.ceil(windowMs / shardMs)
 local sum = 0
-local windowStart = nowMs - windowMs
+local windowStart = currentBucket - windowMs
 for i = 0, numBuckets - 1 do
-    local bucketTs = tostring(nowMs - i * shardMs)
+    local bucketTs = tostring(currentBucket - i * shardMs)
     local count = tonumber(redis.call('HGET', KEYS[3], bucketTs) or '0')
     sum = sum + count
     -- T-17: delete buckets that fall outside the window

@@ -43,17 +43,17 @@ public class NotificationEventsConsumer {
             JsonNode root = objectMapper.readTree(record.value());
 
             NotificationEvent event = new NotificationEvent(
-                new NotificationId(root.path("notificationId").asText()),
-                new StrategyId(root.path("strategyId").asText()),
-                new CustomerId(root.path("customerId").asText()),
-                new UserId(root.path("userId").asText()),
-                new EventId(root.path("eventId").asText()),
-                new EventType(root.path("eventType").asText()),
-                Instant.parse(root.path("triggeredAt").asText()),
-                root.path("window").asText(),
+                new NotificationId(extractText(root.path("notificationId"))),
+                new StrategyId(extractText(root.path("strategyId"))),
+                new CustomerId(extractText(root.path("customerId"))),
+                new UserId(extractText(root.path("userId"))),
+                new EventId(extractText(root.path("eventId"))),
+                new EventType(extractText(root.path("eventType"))),
+                Instant.parse(extractText(root.path("triggeredAt"))),
+                extractText(root.path("window")),
                 root.path("threshold").asInt(),
                 root.path("currentCount").asInt(),
-                root.path("dedupeKey").asText()
+                extractText(root.path("dedupeKey"))
             );
 
             persistNotification.persist(event);
@@ -64,6 +64,13 @@ public class NotificationEventsConsumer {
             log.error("failed to process notification-event offset={}", record.offset(), e);
             throw new RuntimeException(e);
         }
+    }
+
+    private static String extractText(JsonNode node) {
+        if (node.isObject() && node.has("value")) {
+            return node.get("value").asText();
+        }
+        return node.asText();
     }
 
 }

@@ -17,19 +17,14 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
  * Redis-backed timebox counter using a Lua script for atomic event idempotency,
  * business dedup, bucket-based counting, window sum, TTL, and threshold decision.
  * <p>
- * Key layout:
- * <ul>
- *   <li>{@code processed:{eventId}} — event idempotency marker</li>
- *   <li>{@code dedup:{strategyId}:{dedupHash}} — business dedup window marker</li>
- *   <li>{@code timebox:{windowKey}} — hash of bucket timestamps to counts</li>
- * </ul>
+ * All keys use hash tags {@code {windowKey}} to ensure they land on the same Redis Cluster slot.
  */
 public final class RedisTimeboxCounter implements TimeboxOperations {
     private static final Logger log = LoggerFactory.getLogger(RedisTimeboxCounter.class);
 
-    private static final String PROCESSED_PREFIX = "processed:";
-    private static final String DEDUP_PREFIX = "dedup:";
-    private static final String TIMEBOX_PREFIX = "timebox:";
+    private static final String PROCESSED_PREFIX = "processed:{";
+    private static final String DEDUP_PREFIX = "dedup:{";
+    private static final String TIMEBOX_PREFIX = "timebox:{";
 
     private final StringRedisTemplate redis;
     private final DefaultRedisScript<List> timeboxScript;
@@ -58,9 +53,10 @@ public final class RedisTimeboxCounter implements TimeboxOperations {
         long ttlMs = windowMs + shardMs * 2;
         long bucketTs = (command.occurredAt().toEpochMilli() / shardMs) * shardMs;
 
-        String processedKey = PROCESSED_PREFIX + command.eventId().value();
-        String dedupKey = DEDUP_PREFIX + command.dedupKey();
-        String timeboxKey = TIMEBOX_PREFIX + command.windowKey();
+        String windowKey = command.windowKey();
+        String processedKey = PROCESSED_PREFIX + windowKey + "}:" + command.eventId().value();
+        String dedupKey = DEDUP_PREFIX + windowKey + "}:" + command.dedupKey();
+        String timeboxKey = TIMEBOX_PREFIX + windowKey + "}";
 
         try {
             List result = redis.execute(

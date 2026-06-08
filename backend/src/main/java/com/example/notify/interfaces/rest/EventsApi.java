@@ -5,6 +5,7 @@ import com.example.notify.domain.event.EventId;
 import com.example.notify.domain.strategy.Strategies;
 import com.example.notify.engine.matching.EventSnapshot;
 import com.example.notify.engine.matching.CandidateStrategyLookup;
+import com.example.notify.engine.matching.RuleAstEvaluator;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -41,7 +42,10 @@ public final class EventsApi {
             .map(id -> strategies.find(id)).filter(java.util.Optional::isPresent).map(java.util.Optional::get)
             .map(ProcessUserOperationEvent.MatchedStrategy::from).toList();
         processUserOperationEvent.process(new EventId(request.eventId()), snapshot, matchedStrategies, request.occurredAt());
-        return new EventResponse(request.eventId(), matchedStrategies.size());
+        long matchedCount = matchedStrategies.stream()
+            .filter(ms -> new RuleAstEvaluator().matches(ms.ruleAst(), snapshot))
+            .count();
+        return new EventResponse(request.eventId(), candidateIds.size(), (int) matchedCount);
     }
 
     private static void requireNonBlank(String value, String name) {
@@ -53,5 +57,5 @@ public final class EventsApi {
     public record UserOperationEventRequest(String eventId, String customerId, String userId, List<String> userGroupIds, String eventType, Map<String, String> fields, Instant occurredAt) {
         public UserOperationEventRequest { userGroupIds = userGroupIds == null ? List.of() : List.copyOf(userGroupIds); fields = fields == null ? Map.of() : Map.copyOf(fields); occurredAt = occurredAt == null ? Instant.now() : occurredAt; }
     }
-    public record EventResponse(String eventId, int candidateStrategies) {}
+    public record EventResponse(String eventId, int candidateStrategies, int matchedStrategies) {}
 }

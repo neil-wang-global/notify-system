@@ -38,7 +38,6 @@ import java.util.Set;
 import java.util.function.Supplier;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -60,7 +59,10 @@ public class NotifyRuntimeConfig {
         return new ProcessUserOperationEvent(new RuleAstEvaluator(), timeboxOperations, effective);
     }
 
-    @Bean @ConditionalOnBean(StringRedisTemplate.class) TimeboxOperations redisTimeboxCounter(StringRedisTemplate redis, DegradationState degradationState) { return new RedisTimeboxCounter(redis, degradationState); }
+    @Bean TimeboxOperations redisTimeboxCounter(@Autowired(required = false) StringRedisTemplate redis, DegradationState degradationState) {
+        if (redis != null) { return new RedisTimeboxCounter(redis, degradationState); }
+        return new TimeboxCounter();
+    }
     @Bean @ConditionalOnMissingBean(TimeboxOperations.class) TimeboxOperations inMemoryTimeboxCounter() { return new TimeboxCounter(); }
 
     // --- Caffeine local cache layer ---
