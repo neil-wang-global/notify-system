@@ -17,7 +17,7 @@ class FrontendConsoleSourceTest {
         assertContains("pages/RuleEditorPage.vue", "productId");
         assertContains("pages/EventSimulatorPage.vue", "PRODUCT_VIEW");
         assertContains("pages/NotificationsPage.vue", "notification");
-        assertContains("pages/ExceptionsPage.vue", "异常");
+        assertContains("pages/ExceptionsPage.vue", "Exception");
         assertContains("pages/BenchmarkReportPage.vue", "TPS");
         assertContains("pages/SystemMonitorPage.vue", "Kafka");
     }
