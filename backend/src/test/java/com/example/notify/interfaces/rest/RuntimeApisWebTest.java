@@ -160,4 +160,187 @@ class RuntimeApisWebTest {
             .andExpect(jsonPath("$.strategyId").value("strategy-web-rows"));
     }
 
+    @Test
+    void strategySaveWithUsersScopeAndRowRulesReturns200AndVersion1() throws Exception {
+        mockMvc.perform(post("/api/strategies")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "strategyId": "strategy-users-1",
+                      "name": "Users scoped strategy",
+                      "scope": { "kind": "USERS", "userIds": ["user-1", "user-2"], "userGroupIds": [] },
+                      "rules": [
+                        { "field": "eventType", "operator": "EQ", "value": "PRODUCT_VIEW", "connector": "AND", "group": "root", "sortOrder": 1 }
+                      ],
+                      "executionPlan": "plan-users-1",
+                      "userToken": "token-1",
+                      "idempotencyKey": "idem-users-1"
+                    }
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.strategyId").value("strategy-users-1"))
+            .andExpect(jsonPath("$.version").value(1));
+    }
+
+    @Test
+    void strategySaveWithUserGroupsScopeReturns200AndVersion1() throws Exception {
+        mockMvc.perform(post("/api/strategies")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "strategyId": "strategy-groups-1",
+                      "name": "User groups scoped strategy",
+                      "scope": { "kind": "USER_GROUPS", "userIds": [], "userGroupIds": ["group-1", "group-2"] },
+                      "rules": [
+                        { "field": "eventType", "operator": "EQ", "value": "ORDER_CREATED", "connector": "AND", "group": "root", "sortOrder": 1 }
+                      ],
+                      "executionPlan": "plan-groups-1",
+                      "userToken": "token-1",
+                      "idempotencyKey": "idem-groups-1"
+                    }
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.strategyId").value("strategy-groups-1"))
+            .andExpect(jsonPath("$.version").value(1));
+    }
+
+    @Test
+    void strategyUpdateWithCorrectVersionBumpsToVersion2() throws Exception {
+        mockMvc.perform(post("/api/strategies")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "strategyId": "strategy-update-v2",
+                      "name": "Version 1",
+                      "scope": { "kind": "USERS", "userIds": ["user-1"], "userGroupIds": [] },
+                      "rules": [
+                        { "field": "eventType", "operator": "EQ", "value": "PRODUCT_VIEW", "connector": "AND", "group": "root", "sortOrder": 1 }
+                      ],
+                      "executionPlan": "plan-update-v2",
+                      "userToken": "token-1",
+                      "idempotencyKey": "idem-update-v2-1"
+                    }
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.version").value(1));
+
+        mockMvc.perform(put("/api/strategies/strategy-update-v2")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "strategyId": "strategy-update-v2",
+                      "name": "Version 2",
+                      "scope": { "kind": "USERS", "userIds": ["user-1", "user-2"], "userGroupIds": [] },
+                      "rules": [
+                        { "field": "eventType", "operator": "EQ", "value": "ORDER_CREATED", "connector": "AND", "group": "root", "sortOrder": 1 }
+                      ],
+                      "executionPlan": "plan-update-v2",
+                      "expectedVersion": 1,
+                      "userToken": "token-1",
+                      "idempotencyKey": "idem-update-v2-2"
+                    }
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.strategyId").value("strategy-update-v2"))
+            .andExpect(jsonPath("$.version").value(2));
+    }
+
+    @Test
+    void strategyUpdateWithStaleVersionReturns400() throws Exception {
+        mockMvc.perform(post("/api/strategies")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "strategyId": "strategy-stale",
+                      "name": "Stale test",
+                      "scope": { "kind": "GLOBAL", "userIds": [], "userGroupIds": [] },
+                      "eventType": "PRODUCT_VIEW",
+                      "executionPlan": "plan-stale",
+                      "userToken": "token-1",
+                      "idempotencyKey": "idem-stale-1"
+                    }
+                    """))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/strategies/strategy-stale")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "strategyId": "strategy-stale",
+                      "name": "Stale update",
+                      "scope": { "kind": "GLOBAL", "userIds": [], "userGroupIds": [] },
+                      "eventType": "PRODUCT_VIEW",
+                      "executionPlan": "plan-stale",
+                      "expectedVersion": 0,
+                      "userToken": "token-1",
+                      "idempotencyKey": "idem-stale-2"
+                    }
+                    """))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void idempotencyKeyReturnsSameStrategyIdOnIdenticalRequest() throws Exception {
+        String requestJson = """
+            {
+              "strategyId": "strategy-idem",
+              "name": "Idempotency test",
+              "scope": { "kind": "USERS", "userIds": ["user-1"], "userGroupIds": [] },
+              "rules": [
+                { "field": "eventType", "operator": "EQ", "value": "PRODUCT_VIEW", "connector": "AND", "group": "root", "sortOrder": 1 }
+              ],
+              "executionPlan": "plan-idem",
+              "userToken": "token-1",
+              "idempotencyKey": "idem-key-same"
+            }
+            """;
+
+        mockMvc.perform(post("/api/strategies")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestJson))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.strategyId").value("strategy-idem"))
+            .andExpect(jsonPath("$.version").value(1));
+
+        mockMvc.perform(post("/api/strategies")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestJson))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.strategyId").value("strategy-idem"))
+            .andExpect(jsonPath("$.version").value(1));
+    }
+
+    @Test
+    void idempotencyKeyWithDifferentPayloadReturns400() throws Exception {
+        mockMvc.perform(post("/api/strategies")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "strategyId": "strategy-idem-diff",
+                      "name": "Original name",
+                      "scope": { "kind": "GLOBAL", "userIds": [], "userGroupIds": [] },
+                      "eventType": "PRODUCT_VIEW",
+                      "executionPlan": "plan-idem-diff",
+                      "userToken": "token-1",
+                      "idempotencyKey": "idem-key-diff"
+                    }
+                    """))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/strategies")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "strategyId": "strategy-idem-diff",
+                      "name": "Changed name",
+                      "scope": { "kind": "GLOBAL", "userIds": [], "userGroupIds": [] },
+                      "eventType": "PRODUCT_VIEW",
+                      "executionPlan": "plan-idem-diff",
+                      "userToken": "token-1",
+                      "idempotencyKey": "idem-key-diff"
+                    }
+                    """))
+            .andExpect(status().isBadRequest());
+    }
+
 }

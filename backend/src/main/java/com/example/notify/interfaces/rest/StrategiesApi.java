@@ -1,6 +1,8 @@
 package com.example.notify.interfaces.rest;
 
 import com.example.notify.application.strategy.SaveStrategy;
+import com.example.notify.domain.event.UserGroupId;
+import com.example.notify.domain.event.UserId;
 import com.example.notify.domain.event.UserToken;
 import com.example.notify.domain.strategy.IdempotencyKey;
 import com.example.notify.domain.strategy.RuleAst;
@@ -59,7 +61,7 @@ public final class StrategiesApi {
         return new SaveStrategy.Command(
             strategyId,
             new StrategyName(request.name()),
-            request.scope(),
+            toDomainScope(request.scope()),
             ruleAst,
             new StrategyExecutionPlan(request.executionPlan()),
             version,
@@ -67,6 +69,17 @@ public final class StrategiesApi {
             new IdempotencyKey(request.idempotencyKey()),
             request.occurredAt() == null ? Instant.now() : request.occurredAt()
         );
+    }
+
+    private StrategyScope toDomainScope(ScopeDto scope) {
+        if (scope == null) {
+            throw new IllegalArgumentException("scope must not be null");
+        }
+        return switch (scope.kind()) {
+            case GLOBAL -> StrategyScope.global();
+            case USERS -> StrategyScope.users(scope.userIds().stream().map(UserId::new).toArray(UserId[]::new));
+            case USER_GROUPS -> StrategyScope.userGroups(scope.userGroupIds().stream().map(UserGroupId::new).toArray(UserGroupId[]::new));
+        };
     }
 
     private RuleAst ruleAst(SaveStrategyRequest request) {
@@ -103,7 +116,7 @@ public final class StrategiesApi {
         }
         requireText(request.strategyId(), "strategyId");
         requireText(request.name(), "name");
-        if (request.scope() == null) {
+        if (request.scope() == null || request.scope().kind() == null) {
             throw new IllegalArgumentException("scope must not be null");
         }
         if ((request.rules() == null || request.rules().isEmpty()) && (request.eventType() == null || request.eventType().isBlank())) {
@@ -123,7 +136,7 @@ public final class StrategiesApi {
     public record SaveStrategyRequest(
         String strategyId,
         String name,
-        StrategyScope scope,
+        ScopeDto scope,
         String eventType,
         List<RuleRowRequest> rules,
         String executionPlan,
@@ -133,6 +146,22 @@ public final class StrategiesApi {
         Instant occurredAt
     ) {
 
+    }
+
+    public record ScopeDto(
+        StrategyScope.Kind kind,
+        List<String> userIds,
+        List<String> userGroupIds
+    ) {
+
+        public ScopeDto {
+            if (userIds == null) {
+                userIds = List.of();
+            }
+            if (userGroupIds == null) {
+                userGroupIds = List.of();
+            }
+        }
     }
 
     public record RuleRowRequest(
