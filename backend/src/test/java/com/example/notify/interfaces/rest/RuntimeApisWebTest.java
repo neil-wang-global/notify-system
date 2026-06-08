@@ -138,4 +138,26 @@ class RuntimeApisWebTest {
             """.formatted(strategyId, name, idempotencyKey, expectedVersion);
     }
 
+    @Test
+    void strategySaveWithRowBasedRulesCreatesStrategy() throws Exception {
+        mockMvc.perform(post("/api/strategies")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "strategyId": "strategy-web-rows",
+                      "name": "Row Based Strategy",
+                      "scope": { "kind": "GLOBAL", "userIds": [], "userGroupIds": [] },
+                      "rules": [
+                        { "field": "eventType", "operator": "EQ", "value": "PRODUCT_VIEW", "connector": "AND", "group": "root", "sortOrder": 1 },
+                        { "field": "productId", "operator": "IN", "value": ["P001", "P002"], "connector": "AND", "group": "root", "sortOrder": 2 }
+                      ],
+                      "executionPlan": "plan-web-rows",
+                      "userToken": "token-1",
+                      "idempotencyKey": "idem-web-rows"
+                    }
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.strategyId").value("strategy-web-rows"));
+    }
+
 }
