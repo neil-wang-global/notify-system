@@ -30,6 +30,11 @@ import com.example.notify.interfaces.rest.NotificationsApi;
 import com.example.notify.interfaces.rest.StatusApi;
 import com.example.notify.interfaces.rest.StrategiesApi;
 import java.util.List;
+import com.example.notify.domain.notification.NotificationEvents;
+import com.example.notify.domain.notification.NotificationRecord;
+import com.example.notify.domain.notification.NotificationRecords;
+import java.util.Optional;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
@@ -63,8 +68,11 @@ public class NotifyRuntimeConfig {
     }
 
     @Bean
-    ProcessUserOperationEvent processUserOperationEvent(TimeboxOperations timeboxOperations, NotificationRecords notificationRecords) {
-        return new ProcessUserOperationEvent(new RuleAstEvaluator(), timeboxOperations, event -> notificationRecords.addIfAbsent(NotificationRecord.from(event)));
+    ProcessUserOperationEvent processUserOperationEvent(TimeboxOperations timeboxOperations, NotificationRecords notificationRecords, @Autowired(required = false) NotificationEvents notificationEvents) {
+        NotificationEvents effective = notificationEvents != null
+            ? notificationEvents
+            : event -> notificationRecords.addIfAbsent(NotificationRecord.from(event));
+        return new ProcessUserOperationEvent(new RuleAstEvaluator(), timeboxOperations, effective);
     }
 
     @Bean
@@ -85,14 +93,18 @@ public class NotifyRuntimeConfig {
     }
 
     @Bean
-    EventsApi eventsApi(ProcessUserOperationEvent processUserOperationEvent) {
-        ProcessUserOperationEvent.MatchedStrategy defaultStrategy = new ProcessUserOperationEvent.MatchedStrategy(
+    ProcessUserOperationEvent.MatchedStrategy defaultMatchedStrategy() {
+        return new ProcessUserOperationEvent.MatchedStrategy(
             new StrategyId("strategy-runtime-default"),
             new RuleAst.Comparison("eventType", RuleOperator.EQ, "PRODUCT_VIEW"),
             new StrategyExecutionPlan(Duration.ofSeconds(30), Duration.ofSeconds(10), Duration.ZERO, List.of("customerId", "userId", "eventType")),
             1
         );
-        return new EventsApi(processUserOperationEvent, List.of(defaultStrategy));
+    }
+
+    @Bean
+    EventsApi eventsApi(ProcessUserOperationEvent processUserOperationEvent, List<ProcessUserOperationEvent.MatchedStrategy> matchedStrategies) {
+        return new EventsApi(processUserOperationEvent, matchedStrategies);
     }
 
     @Bean
