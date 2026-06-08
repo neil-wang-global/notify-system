@@ -107,7 +107,7 @@ async function handleSend() {
         {{ sending ? '发送中...' : '发送事件' }}
       </button>
       <span v-if="result" class="text-emerald-600">
-        事件 {{ result.eventId }} 已处理，{{ result.candidateStrategies }} 个候选策略
+        事件 {{ result.eventId }} 已处理
       </span>
       <span v-if="error" class="text-rose-600">错误: {{ error }}</span>
     </div>
