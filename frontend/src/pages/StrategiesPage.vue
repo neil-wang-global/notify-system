@@ -207,9 +207,8 @@ function buildBody() {
     idempotencyKey: `${strategyId.value}-${crypto.randomUUID()}`,
   };
 
-  if (businessDedupWindowSeconds.value !== '' && businessDedupWindowSeconds.value !== null) {
-    body.businessDedupWindowSeconds = Number(businessDedupWindowSeconds.value);
-  }
+  body.businessDedupWindowSeconds = businessDedupWindowSeconds.value !== '' && businessDedupWindowSeconds.value !== null
+    ? Number(businessDedupWindowSeconds.value) : 0;
   if (dedupFields.value && dedupFields.value.trim()) {
     body.dedupFields = dedupFields.value.split(',').map(s => s.trim()).filter(Boolean);
   }

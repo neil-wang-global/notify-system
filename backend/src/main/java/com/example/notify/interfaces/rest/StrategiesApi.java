@@ -311,14 +311,17 @@ public final class StrategiesApi {
 
     public record StrategyDetailResponse(
         String strategyId, String name, ScopeResponse scope, String eventType, String windowSize,
-        int threshold, int version, Object ruleAst, String executionPlan, List<RuleItemResponse> rules
+        int threshold, int version, Object ruleAst, String executionPlan, List<RuleItemResponse> rules,
+        long businessDedupWindowSeconds, List<String> dedupFields
     ) {
         static StrategyDetailResponse from(Strategy s) {
             String eventType = extractEventType(s.ruleAst());
             String windowSize = formatWindowSize(s.executionPlan().windowSize());
             return new StrategyDetailResponse(
                 s.id().toString(), s.name().value(), ScopeResponse.from(s.scope()), eventType, windowSize,
-                s.threshold(), s.version().value(), s.ruleAst(), s.executionPlan().toString(), RuleItemResponse.from(s.ruleAst())
+                s.threshold(), s.version().value(), s.ruleAst(), s.executionPlan().toString(), RuleItemResponse.from(s.ruleAst()),
+                s.executionPlan().businessDedupWindow().toSeconds(),
+                s.executionPlan().dedupFields()
             );
         }
     }
