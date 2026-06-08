@@ -11,8 +11,7 @@ import com.example.notify.domain.event.UserId;
 import com.example.notify.domain.notification.NotificationEvent;
 import com.example.notify.domain.notification.NotificationId;
 import com.example.notify.domain.notification.NotificationRecords;
-import com.example.notify.domain.strategy.StrategyId;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.example.notify.domain.strategy.StrategyId;import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -95,7 +94,7 @@ class KafkaNotificationEventsTest {
         NotifyProperties props = testProps();
 
         KafkaNotificationEvents publisher = new KafkaNotificationEvents(
-            kafkaTemplate, props, stubNotificationRecords(), objectMapper);
+            kafkaTemplate, props, objectMapper);
 
         NotificationEvent event = new NotificationEvent(
             new NotificationId("notif-test-1"),
@@ -130,7 +129,7 @@ class KafkaNotificationEventsTest {
         NotifyProperties props = testProps();
 
         KafkaNotificationEvents publisher = new KafkaNotificationEvents(
-            kafkaTemplate, props, stubNotificationRecords(), objectMapper);
+            kafkaTemplate, props, objectMapper);
 
         NotificationEvent event = new NotificationEvent(
             new NotificationId("notif-key-test"),
@@ -181,12 +180,8 @@ class KafkaNotificationEventsTest {
             new NotifyProperties.Kafka(new NotifyProperties.Topics(
                 "user-operation-events", "notification-events", "uop-dlt", "notif-dlt")),
             new NotifyProperties.Deduplication(true, Duration.ofSeconds(10), List.of()),
-            new NotifyProperties.Window(Duration.ofSeconds(30), Duration.ofSeconds(10))
+            new NotifyProperties.Window(Duration.ofSeconds(30), Duration.ofSeconds(10), Map.of())
         );
-    }
-
-    private NotificationRecords stubNotificationRecords() {
-        return record -> true;
     }
 
 }

@@ -44,6 +44,14 @@ public final class JdbcStrategies implements Strategies {
     }
 
     @Override
+    public List<Strategy> list() {
+        return DataSourceRoleContext.read(() -> {
+            List<String> ids = jdbc.query("select id from strategies", (rs, rowNum) -> rs.getString("id"));
+            return ids.stream().map(id -> find(new StrategyId(id))).filter(Optional::isPresent).map(Optional::get).toList();
+        });
+    }
+
+    @Override
     public Optional<Strategy> find(StrategyId strategyId) {
         return DataSourceRoleContext.read(() -> {
             List<Strategy> rows = jdbc.query("""

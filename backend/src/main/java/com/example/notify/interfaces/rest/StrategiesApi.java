@@ -1,6 +1,7 @@
 package com.example.notify.interfaces.rest;
 
 import com.example.notify.application.strategy.SaveStrategy;
+import com.example.notify.config.NotifyProperties;
 import com.example.notify.domain.event.UserGroupId;
 import com.example.notify.domain.event.UserId;
 import com.example.notify.domain.event.UserToken;
@@ -10,15 +11,23 @@ import com.example.notify.domain.strategy.RuleConnector;
 import com.example.notify.domain.strategy.RuleGroup;
 import com.example.notify.domain.strategy.RuleOperator;
 import com.example.notify.domain.strategy.RuleValue;
+import com.example.notify.domain.strategy.Strategy;
+import com.example.notify.domain.strategy.Strategies;
 import com.example.notify.domain.strategy.StrategyExecutionPlan;
 import com.example.notify.domain.strategy.StrategyId;
 import com.example.notify.domain.strategy.StrategyName;
 import com.example.notify.domain.strategy.StrategyRuleItem;
 import com.example.notify.domain.strategy.StrategyScope;
 import com.example.notify.domain.strategy.StrategyVersion;
+import com.example.notify.domain.strategy.StrategySaved;
+import com.example.notify.infrastructure.redis.CandidateStrategyLookup;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -30,45 +39,105 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/strategies")
 public final class StrategiesApi {
 
-    private final SaveStrategy saveStrategy;
+    private static final Duration DEFAULT_BUSINESS_DEDUP_WINDOW = Duration.ZERO;
+    private static final List<String> DEFAULT_DEDUP_FIELDS = List.of("customerId", "userId", "eventType");
 
-    public StrategiesApi(SaveStrategy saveStrategy) {
-        if (saveStrategy == null) {
-            throw new IllegalArgumentException("saveStrategy must not be null");
+    private static final Map<String, Duration> WINDOW_DURATIONS = Map.of(
+        "5m", Duration.ofMinutes(5),
+        "10m", Duration.ofMinutes(10),
+        "30m", Duration.ofMinutes(30),
+        "1d", Duration.ofDays(1),
+        "5d", Duration.ofDays(5)
+    );
+
+    private final SaveStrategy saveStrategy;
+    private final Strategies strategies;
+    private final CandidateStrategyLookup candidateLookup;
+    private final NotifyProperties properties;
+    private final ApplicationEventPublisher eventPublisher;
+
+    public StrategiesApi(SaveStrategy saveStrategy, Strategies strategies, CandidateStrategyLookup candidateLookup, NotifyProperties properties, ApplicationEventPublisher eventPublisher) {
+        if (saveStrategy == null || strategies == null || candidateLookup == null || properties == null || eventPublisher == null) {
+            throw new IllegalArgumentException("strategies api is incomplete");
         }
         this.saveStrategy = saveStrategy;
+        this.strategies = strategies;
+        this.candidateLookup = candidateLookup;
+        this.properties = properties;
+        this.eventPublisher = eventPublisher;
+    }
+
+    @GetMapping("/window-presets")
+    public List<WindowPreset> windowPresets() {
+        return WINDOW_DURATIONS.entrySet().stream()
+            .map(e -> new WindowPreset(e.getKey(), e.getValue().toString()))
+            .toList();
+    }
+
+    @GetMapping
+    public List<StrategyListResponse> list() {
+        return strategies.list().stream()
+            .map(StrategyListResponse::from)
+            .toList();
+    }
+
+    @GetMapping("/{strategyId}")
+    public StrategyDetailResponse get(@PathVariable String strategyId) {
+        return strategies.find(new StrategyId(strategyId))
+            .map(StrategyDetailResponse::from)
+            .orElseThrow(() -> new IllegalArgumentException("strategy not found: " + strategyId));
     }
 
     @PostMapping
-    public StrategyResponse save(@RequestBody SaveStrategyRequest request) {
+    public StrategySaveResponse save(@RequestBody SaveStrategyRequest request) {
         validate(request);
         SaveStrategy.Result result = saveStrategy.save(command(new StrategyId(request.strategyId()), request, Optional.empty()));
-        return StrategyResponse.from(result);
+        candidateLookup.refresh(result.strategy());
+        eventPublisher.publishEvent(new StrategySaved(result.strategy().id(), result.strategy().version()));
+        return StrategySaveResponse.from(result);
     }
 
     @PutMapping("/{strategyId}")
-    public StrategyResponse update(@PathVariable String strategyId, @RequestBody SaveStrategyRequest request) {
+    public StrategySaveResponse update(@PathVariable String strategyId, @RequestBody SaveStrategyRequest request) {
         validate(request);
         if (!strategyId.equals(request.strategyId())) {
             throw new IllegalArgumentException("path strategyId must match request strategyId");
         }
         SaveStrategy.Result result = saveStrategy.save(command(new StrategyId(strategyId), request, Optional.of(new StrategyVersion(request.expectedVersion()))));
-        return StrategyResponse.from(result);
+        candidateLookup.refresh(result.strategy());
+        eventPublisher.publishEvent(new StrategySaved(result.strategy().id(), result.strategy().version()));
+        return StrategySaveResponse.from(result);
     }
 
     private SaveStrategy.Command command(StrategyId strategyId, SaveStrategyRequest request, Optional<StrategyVersion> version) {
         RuleAst ruleAst = ruleAst(request);
+        Duration windowSize = parseWindowSize(request.windowSize());
+        Duration shardSize = properties.window() != null ? properties.window().shardSizeFor(windowSize) : Duration.ofSeconds(10);
         return new SaveStrategy.Command(
             strategyId,
             new StrategyName(request.name()),
             toDomainScope(request.scope()),
             ruleAst,
-            new StrategyExecutionPlan(request.executionPlan()),
+            new StrategyExecutionPlan(windowSize, shardSize, DEFAULT_BUSINESS_DEDUP_WINDOW, DEFAULT_DEDUP_FIELDS),
             version,
             new UserToken(request.userToken()),
             new IdempotencyKey(request.idempotencyKey()),
             request.occurredAt() == null ? Instant.now() : request.occurredAt()
         );
+    }
+
+    private Duration parseWindowSize(String windowSize) {
+        if (windowSize == null || windowSize.isBlank()) {
+            if (properties.window() != null && properties.window().defaultSize() != null) {
+                return properties.window().defaultSize();
+            }
+            return Duration.ofSeconds(30);
+        }
+        Duration duration = WINDOW_DURATIONS.get(windowSize);
+        if (duration == null) {
+            throw new IllegalArgumentException("unsupported windowSize: " + windowSize + ". Supported values: " + WINDOW_DURATIONS.keySet());
+        }
+        return duration;
     }
 
     private StrategyScope toDomainScope(ScopeDto scope) {
@@ -122,7 +191,6 @@ public final class StrategiesApi {
         if ((request.rules() == null || request.rules().isEmpty()) && (request.eventType() == null || request.eventType().isBlank())) {
             throw new IllegalArgumentException("eventType or rules must not be blank");
         }
-        requireText(request.executionPlan(), "executionPlan");
         requireText(request.userToken(), "userToken");
         requireText(request.idempotencyKey(), "idempotencyKey");
     }
@@ -133,27 +201,26 @@ public final class StrategiesApi {
         }
     }
 
+    public record WindowPreset(String key, String duration) {}
+
     public record SaveStrategyRequest(
         String strategyId,
         String name,
         ScopeDto scope,
         String eventType,
         List<RuleRowRequest> rules,
-        String executionPlan,
+        String windowSize,
         int expectedVersion,
         String userToken,
         String idempotencyKey,
         Instant occurredAt
-    ) {
-
-    }
+    ) {}
 
     public record ScopeDto(
         StrategyScope.Kind kind,
         List<String> userIds,
         List<String> userGroupIds
     ) {
-
         public ScopeDto {
             if (userIds == null) {
                 userIds = List.of();
@@ -171,16 +238,25 @@ public final class StrategiesApi {
         String connector,
         String group,
         int sortOrder
-    ) {
+    ) {}
 
+    public record StrategySaveResponse(String strategyId, int version) {
+        private static StrategySaveResponse from(SaveStrategy.Result result) {
+            return new StrategySaveResponse(result.strategy().id().toString(), result.strategy().version().value());
+        }
     }
 
-    public record StrategyResponse(String strategyId, int version) {
-
-        private static StrategyResponse from(SaveStrategy.Result result) {
-            return new StrategyResponse(result.strategy().id().toString(), result.strategy().version().value());
+    public record StrategyListResponse(String strategyId, String name, String scope, String eventType, int version) {
+        static StrategyListResponse from(Strategy s) {
+            String eventType = s.ruleAst() instanceof RuleAst.Comparison c ? c.field().equals("eventType") ? String.valueOf(c.value()) : "" : "";
+            return new StrategyListResponse(s.id().toString(), s.name().value(), s.scope().kind().name(), eventType, s.version().value());
         }
+    }
 
+    public record StrategyDetailResponse(String strategyId, String name, String scope, int version, Object ruleAst, String executionPlan) {
+        static StrategyDetailResponse from(Strategy s) {
+            return new StrategyDetailResponse(s.id().toString(), s.name().value(), s.scope().kind().name(), s.version().value(), s.ruleAst(), s.executionPlan().toString());
+        }
     }
 
 }

@@ -17,8 +17,8 @@ class StrategiesApiTest {
         Method save = api.getDeclaredMethod("save", StrategiesApi.SaveStrategyRequest.class);
         Method update = api.getDeclaredMethod("update", String.class, StrategiesApi.SaveStrategyRequest.class);
 
-        assertEquals(StrategiesApi.StrategyResponse.class, save.getReturnType());
-        assertEquals(StrategiesApi.StrategyResponse.class, update.getReturnType());
+        assertEquals(StrategiesApi.StrategySaveResponse.class, save.getReturnType());
+        assertEquals(StrategiesApi.StrategySaveResponse.class, update.getReturnType());
     }
 
 }

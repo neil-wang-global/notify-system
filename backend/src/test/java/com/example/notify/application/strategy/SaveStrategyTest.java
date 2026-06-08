@@ -128,6 +128,9 @@ class SaveStrategyTest {
         private final Map<IdempotencyKey, String> fingerprints = new HashMap<>();
 
         @Override
+        public List<Strategy> list() { return List.copyOf(saved); }
+
+        @Override
         public Optional<Strategy> find(StrategyId strategyId) {
             return Optional.ofNullable(strategies.get(strategyId));
         }

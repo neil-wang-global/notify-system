@@ -7,11 +7,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.example.notify.domain.event.EventType;
 import com.example.notify.domain.event.UserGroupId;
 import com.example.notify.domain.event.UserId;
+import com.example.notify.domain.strategy.RuleAst;
+import com.example.notify.domain.strategy.RuleConnector;
+import com.example.notify.domain.strategy.RuleOperator;
+import com.example.notify.domain.strategy.Strategy;
 import com.example.notify.domain.strategy.StrategyExecutionPlan;
 import com.example.notify.domain.strategy.StrategyId;
+import com.example.notify.domain.strategy.StrategyName;
 import com.example.notify.domain.strategy.StrategyScope;
 import com.example.notify.domain.strategy.StrategyVersion;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -40,6 +46,10 @@ import org.testcontainers.utility.DockerImageName;
 @Tag("docker")
 class RealRedisStrategiesIT {
 
+    private static final Duration W = Duration.ofSeconds(30);
+    private static final Duration S = Duration.ofSeconds(10);
+    private static final Duration D = Duration.ZERO;
+
     @Container
     @SuppressWarnings("resource")
     static GenericContainer<?> redis = new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
@@ -58,7 +68,6 @@ class RealRedisStrategiesIT {
 
     @BeforeEach
     void setUp() {
-        // Flush all keys before each test
         redisTemplate.getConnectionFactory().getConnection().serverCommands().flushAll();
         realRedisStrategies = new RealRedisStrategies(redisTemplate);
     }
@@ -66,70 +75,48 @@ class RealRedisStrategiesIT {
     @Test
     void versionGuardRejectsStaleWrites() {
         StrategyId strategyId = new StrategyId("strategy-1");
-        RedisStrategy v2 = new RedisStrategy(
-                strategyId,
-                new StrategyVersion(2),
-                new StrategyExecutionPlan(Duration.ofSeconds(30), Duration.ofSeconds(10), Duration.ZERO, List.of("customerId", "userId")),
-                StrategyScope.users(new UserId("user-1")),
-                new EventType("PRODUCT_VIEW"),
-                List.of(new RedisFieldIndex("productId", "P001"))
-        );
+        Strategy v2 = makeStrategy(strategyId, 2, StrategyScope.users(new UserId("user-1")),
+            new RuleAst.Group(RuleConnector.AND, List.of(
+                new RuleAst.Comparison("eventType", RuleOperator.EQ, "PRODUCT_VIEW"),
+                new RuleAst.Comparison("productId", RuleOperator.EQ, "P001"))));
         assertTrue(realRedisStrategies.refresh(v2));
 
-        RedisStrategy v1 = new RedisStrategy(
-                strategyId,
-                new StrategyVersion(1),
-                new StrategyExecutionPlan(Duration.ofSeconds(60), Duration.ofSeconds(20), Duration.ZERO, List.of("customerId")),
-                StrategyScope.global(),
-                new EventType("ORDER_CREATED"),
-                List.of()
-        );
+        Strategy v1 = makeStrategy(strategyId, 1, StrategyScope.global(),
+            new RuleAst.Comparison("eventType", RuleOperator.EQ, "ORDER_CREATED"));
         assertFalse(realRedisStrategies.refresh(v1));
     }
 
     @Test
     void storesAndLoadsExecutionPlan() {
         StrategyId strategyId = new StrategyId("strategy-plan-test");
-        StrategyExecutionPlan plan = new StrategyExecutionPlan(
-                Duration.ofSeconds(30), Duration.ofSeconds(10), Duration.ZERO, List.of("customerId", "userId", "eventType"));
-        RedisStrategy strategy = new RedisStrategy(
-                strategyId, new StrategyVersion(1), plan,
-                StrategyScope.global(), new EventType("PRODUCT_VIEW"), List.of()
-        );
+        Strategy strategy = makeStrategy(strategyId, 1, StrategyScope.global(),
+            new RuleAst.Comparison("eventType", RuleOperator.EQ, "PRODUCT_VIEW"));
 
         assertTrue(realRedisStrategies.refresh(strategy));
         StrategyExecutionPlan loaded = realRedisStrategies.plan(strategyId).orElseThrow();
-        assertEquals(plan, loaded);
+        assertEquals(strategy.executionPlan(), loaded);
     }
 
     @Test
     void refreshRemovesOldIndexesAndAddsNewOnes() {
         StrategyId strategyId = new StrategyId("strategy-refresh-test");
 
-        RedisStrategy v1 = new RedisStrategy(
-                strategyId, new StrategyVersion(1),
-                new StrategyExecutionPlan("plan-v1"),
-                StrategyScope.users(new UserId("user-1")),
-                new EventType("PRODUCT_VIEW"),
-                List.of(new RedisFieldIndex("productId", "P001"))
-        );
+        Strategy v1 = makeStrategy(strategyId, 1, StrategyScope.users(new UserId("user-1")),
+            new RuleAst.Group(RuleConnector.AND, List.of(
+                new RuleAst.Comparison("eventType", RuleOperator.EQ, "PRODUCT_VIEW"),
+                new RuleAst.Comparison("productId", RuleOperator.EQ, "P001"))));
         assertTrue(realRedisStrategies.refresh(v1));
 
-        RedisStrategy v2 = new RedisStrategy(
-                strategyId, new StrategyVersion(2),
-                new StrategyExecutionPlan("plan-v2"),
-                StrategyScope.users(new UserId("user-2")),
-                new EventType("ORDER_CREATED"),
-                List.of(new RedisFieldIndex("orderId", "O001"))
-        );
+        Strategy v2 = makeStrategy(strategyId, 2, StrategyScope.users(new UserId("user-2")),
+            new RuleAst.Group(RuleConnector.AND, List.of(
+                new RuleAst.Comparison("eventType", RuleOperator.EQ, "ORDER_CREATED"),
+                new RuleAst.Comparison("orderId", RuleOperator.EQ, "O001"))));
         assertTrue(realRedisStrategies.refresh(v2));
 
-        // Old indexes should be gone, new ones present
         Set<StrategyId> candidates = realRedisStrategies.candidates(
                 "cust-1", "user-2", Set.of(), "ORDER_CREATED", Map.of("orderId", "O001"));
         assertTrue(candidates.contains(strategyId));
 
-        // user-1 + PRODUCT_VIEW should NOT contain this strategy anymore
         Set<StrategyId> oldCandidates = realRedisStrategies.candidates(
                 "cust-1", "user-1", Set.of(), "PRODUCT_VIEW", Map.of("productId", "P001"));
         assertFalse(oldCandidates.contains(strategyId));
@@ -140,17 +127,10 @@ class RealRedisStrategiesIT {
         StrategyId s1 = new StrategyId("s-global");
         StrategyId s2 = new StrategyId("s-user");
 
-        realRedisStrategies.refresh(new RedisStrategy(
-                s1, new StrategyVersion(1),
-                new StrategyExecutionPlan("plan-1"),
-                StrategyScope.global(), new EventType("PRODUCT_VIEW"), List.of()
-        ));
-        realRedisStrategies.refresh(new RedisStrategy(
-                s2, new StrategyVersion(1),
-                new StrategyExecutionPlan("plan-2"),
-                StrategyScope.users(new UserId("user-1")),
-                new EventType("PRODUCT_VIEW"), List.of()
-        ));
+        realRedisStrategies.refresh(makeStrategy(s1, 1, StrategyScope.global(),
+            new RuleAst.Comparison("eventType", RuleOperator.EQ, "PRODUCT_VIEW")));
+        realRedisStrategies.refresh(makeStrategy(s2, 1, StrategyScope.users(new UserId("user-1")),
+            new RuleAst.Comparison("eventType", RuleOperator.EQ, "PRODUCT_VIEW")));
 
         Set<StrategyId> candidates = realRedisStrategies.candidates(
                 "cust-1", "user-1", Set.of(), "PRODUCT_VIEW", Map.of());
@@ -163,18 +143,14 @@ class RealRedisStrategiesIT {
         StrategyId s1 = new StrategyId("s-field-match");
         StrategyId s2 = new StrategyId("s-field-nomatch");
 
-        realRedisStrategies.refresh(new RedisStrategy(
-                s1, new StrategyVersion(1),
-                new StrategyExecutionPlan("plan-1"),
-                StrategyScope.global(), new EventType("PRODUCT_VIEW"),
-                List.of(new RedisFieldIndex("category", "ELECTRONICS"))
-        ));
-        realRedisStrategies.refresh(new RedisStrategy(
-                s2, new StrategyVersion(1),
-                new StrategyExecutionPlan("plan-2"),
-                StrategyScope.global(), new EventType("PRODUCT_VIEW"),
-                List.of(new RedisFieldIndex("category", "BOOKS"))
-        ));
+        realRedisStrategies.refresh(makeStrategy(s1, 1, StrategyScope.global(),
+            new RuleAst.Group(RuleConnector.AND, List.of(
+                new RuleAst.Comparison("eventType", RuleOperator.EQ, "PRODUCT_VIEW"),
+                new RuleAst.Comparison("category", RuleOperator.EQ, "ELECTRONICS")))));
+        realRedisStrategies.refresh(makeStrategy(s2, 1, StrategyScope.global(),
+            new RuleAst.Group(RuleConnector.AND, List.of(
+                new RuleAst.Comparison("eventType", RuleOperator.EQ, "PRODUCT_VIEW"),
+                new RuleAst.Comparison("category", RuleOperator.EQ, "BOOKS")))));
 
         Set<StrategyId> candidates = realRedisStrategies.candidates(
                 "cust-1", "user-1", Set.of(), "PRODUCT_VIEW",
@@ -187,12 +163,9 @@ class RealRedisStrategiesIT {
     void candidateLookupIncludesGroupScope() {
         StrategyId s1 = new StrategyId("s-group");
 
-        realRedisStrategies.refresh(new RedisStrategy(
-                s1, new StrategyVersion(1),
-                new StrategyExecutionPlan("plan-1"),
-                StrategyScope.userGroups(new UserGroupId("group-1")),
-                new EventType("PRODUCT_VIEW"), List.of()
-        ));
+        realRedisStrategies.refresh(makeStrategy(s1, 1,
+            StrategyScope.userGroups(new UserGroupId("group-1")),
+            new RuleAst.Comparison("eventType", RuleOperator.EQ, "PRODUCT_VIEW")));
 
         Set<StrategyId> candidates = realRedisStrategies.candidates(
                 "cust-1", "user-1", Set.of("group-1"), "PRODUCT_VIEW", Map.of());
@@ -202,5 +175,11 @@ class RealRedisStrategiesIT {
     @Test
     void planReturnsEmptyForUnknownStrategy() {
         assertTrue(realRedisStrategies.plan(new StrategyId("nonexistent")).isEmpty());
+    }
+
+    private Strategy makeStrategy(StrategyId id, int version, StrategyScope scope, RuleAst ast) {
+        return new Strategy(id, new StrategyName("test"), scope, ast,
+            new StrategyExecutionPlan(W, S, D, List.of("customerId", "userId", "eventType")),
+            new StrategyVersion(version));
     }
 }

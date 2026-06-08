@@ -10,8 +10,16 @@ const scopeKind = ref('GLOBAL');
 const scopeUserIds = ref('');
 const scopeUserGroupIds = ref('');
 const eventType = ref('');
-const executionPlan = ref('{"windowSize":60000,"shardSize":10000}');
+const windowSize = ref('5m');
 const expectedVersion = ref(0);
+
+const windowOptions = [
+  { key: '5m', label: '5 分钟' },
+  { key: '10m', label: '10 分钟' },
+  { key: '30m', label: '30 分钟' },
+  { key: '1d', label: '1 天' },
+  { key: '5d', label: '5 天' },
+];
 
 const rules = ref([]);
 
@@ -58,7 +66,7 @@ async function handleSave() {
         group: r.group,
         sortOrder: r.sortOrder,
       })) : undefined,
-      executionPlan: executionPlan.value,
+      windowSize: windowSize.value,
       expectedVersion: expectedVersion.value,
       userToken: userToken.value,
       idempotencyKey: `${strategyId.value}-${Date.now()}`,
@@ -105,8 +113,22 @@ async function handleSave() {
         <input v-model="eventType" class="w-full rounded-lg border border-slate-200 p-2" placeholder="PRODUCT_VIEW" />
       </div>
       <div>
-        <label class="mb-1 block text-slate-600">Execution Plan (JSON)</label>
-        <input v-model="executionPlan" class="w-full rounded-lg border border-slate-200 p-2" />
+        <label class="mb-1 block text-slate-600">窗口大小</label>
+        <div class="flex flex-wrap gap-2">
+          <button
+            v-for="opt in windowOptions"
+            :key="opt.key"
+            @click="windowSize = opt.key"
+            :class="[
+              'rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+              windowSize === opt.key
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50',
+            ]"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
       </div>
       <div>
         <label class="mb-1 block text-slate-600">Expected Version (0 for create)</label>

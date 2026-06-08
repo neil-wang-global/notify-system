@@ -6,6 +6,7 @@ import com.example.notify.domain.strategy.Strategy;
 import com.example.notify.domain.strategy.StrategyExecutionPlan;
 import com.example.notify.domain.strategy.StrategyId;
 import com.example.notify.domain.strategy.StrategyVersion;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -16,6 +17,9 @@ public final class CacheStrategies implements Strategies {
     private final Map<IdempotencyKey, StrategyId> idempotencyKeys = new ConcurrentHashMap<>();
     private final Map<IdempotencyKey, String> fingerprints = new ConcurrentHashMap<>();
     private final Map<StrategyId, CacheStrategy> cachedPlans = new ConcurrentHashMap<>();
+
+    @Override
+    public List<Strategy> list() { return List.copyOf(strategies.values()); }
 
     @Override
     public Optional<Strategy> find(StrategyId strategyId) {

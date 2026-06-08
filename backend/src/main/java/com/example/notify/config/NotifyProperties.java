@@ -2,6 +2,7 @@ package com.example.notify.config;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "notify")
@@ -24,6 +25,13 @@ public record NotifyProperties(
 
     public record Deduplication(boolean enabled, Duration defaultWindow, List<String> defaultDimensions) {}
 
-    public record Window(Duration defaultSize, Duration defaultShardSize) {}
+    public record Window(Duration defaultSize, Duration defaultShardSize, Map<Duration, Duration> shardSizeMap) {
+        public Duration shardSizeFor(Duration windowSize) {
+            if (shardSizeMap != null && shardSizeMap.containsKey(windowSize)) {
+                return shardSizeMap.get(windowSize);
+            }
+            return defaultShardSize;
+        }
+    }
 
 }

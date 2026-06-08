@@ -18,7 +18,8 @@ import com.example.notify.infrastructure.persistence.JdbcNotificationRecords;
 import com.example.notify.infrastructure.persistence.JdbcNotificationRecords;
 import com.example.notify.infrastructure.persistence.PersistenceSchema;
 import com.example.notify.infrastructure.redis.RealRedisStrategies;
-import com.example.notify.infrastructure.redis.RedisStrategy;
+import com.example.notify.domain.strategy.Strategy;
+import com.example.notify.domain.strategy.StrategyName;
 import com.example.notify.domain.strategy.StrategyScope;
 import com.example.notify.domain.strategy.StrategyVersion;
 import java.time.Duration;
@@ -93,16 +94,14 @@ class FullNotificationFlowIT extends AbstractIntegrationTest {
 
         // Step 2: Refresh Redis strategy cache so the strategy is discoverable.
         RealRedisStrategies realRedisStrategies = new RealRedisStrategies(redisTemplate);
-        RedisStrategy redisStrategy = new RedisStrategy(
-                STRATEGY_ID,
-                new StrategyVersion(1),
+        Strategy domainStrategy = new Strategy(STRATEGY_ID,
+                new com.example.notify.domain.strategy.StrategyName("test"),
+                StrategyScope.global(),
+                new RuleAst.Comparison("eventType", com.example.notify.domain.strategy.RuleOperator.EQ, "PRODUCT_VIEW"),
                 new StrategyExecutionPlan(Duration.ofSeconds(30), Duration.ofSeconds(10), Duration.ZERO,
                         List.of("customerId", "userId", "eventType")),
-                StrategyScope.global(),
-                EVENT_TYPE,
-                List.of()
-        );
-        boolean accepted = realRedisStrategies.refresh(redisStrategy);
+                new StrategyVersion(1));
+        boolean accepted = realRedisStrategies.refresh(domainStrategy);
         assertThat(accepted).isTrue();
 
         // Step 3: Build matched strategy for the processing pipeline.

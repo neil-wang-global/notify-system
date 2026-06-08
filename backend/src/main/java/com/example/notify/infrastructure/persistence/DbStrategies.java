@@ -4,6 +4,7 @@ import com.example.notify.domain.strategy.IdempotencyKey;
 import com.example.notify.domain.strategy.Strategies;
 import com.example.notify.domain.strategy.Strategy;
 import com.example.notify.domain.strategy.StrategyId;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -13,6 +14,9 @@ public final class DbStrategies implements Strategies {
     private final Map<StrategyId, Strategy> strategies = new ConcurrentHashMap<>();
     private final Map<IdempotencyKey, StrategyId> idempotencyKeys = new ConcurrentHashMap<>();
     private final Map<IdempotencyKey, String> fingerprints = new ConcurrentHashMap<>();
+
+    @Override
+    public List<Strategy> list() { return List.copyOf(strategies.values()); }
 
     @Override
     public Optional<Strategy> find(StrategyId strategyId) {
