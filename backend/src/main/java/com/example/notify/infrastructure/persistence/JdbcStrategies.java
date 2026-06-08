@@ -1,6 +1,8 @@
 package com.example.notify.infrastructure.persistence;
 
 import com.example.notify.config.DataSourceRoleContext;
+import com.example.notify.domain.event.UserGroupId;
+import com.example.notify.domain.event.UserId;
 import com.example.notify.domain.strategy.IdempotencyKey;
 import com.example.notify.domain.strategy.RuleAst;
 import com.example.notify.domain.strategy.RuleConnector;
@@ -49,23 +51,42 @@ public final class JdbcStrategies implements Strategies {
                            window_size_seconds, shard_size_seconds, business_dedup_seconds, version
                     from strategies where id = ?
                     """,
-                (rs, rowNum) -> new Strategy(
-                    new StrategyId(rs.getString("id")),
-                    new StrategyName(rs.getString("name")),
-                    new StrategyScope(StrategyScope.Kind.valueOf(rs.getString("scope_kind")), List.of(), List.of()),
-                    astFrom(rs.getString("rule_ast_json"), rs.getString("rule_field"), rs.getString("rule_operator"), rs.getString("rule_value")),
-                    new StrategyExecutionPlan(
-                        Duration.ofSeconds(rs.getLong("window_size_seconds")),
-                        Duration.ofSeconds(rs.getLong("shard_size_seconds")),
-                        Duration.ofSeconds(rs.getLong("business_dedup_seconds")),
-                        List.of("customerId", "userId", "eventType")
-                    ),
-                    new StrategyVersion(rs.getInt("version"))
-                ),
+                (rs, rowNum) -> {
+                    StrategyScope scope = restoreScope(strategyId.toString(), StrategyScope.Kind.valueOf(rs.getString("scope_kind")));
+                    return new Strategy(
+                        new StrategyId(rs.getString("id")),
+                        new StrategyName(rs.getString("name")),
+                        scope,
+                        astFrom(rs.getString("rule_ast_json"), rs.getString("rule_field"), rs.getString("rule_operator"), rs.getString("rule_value")),
+                        new StrategyExecutionPlan(
+                            Duration.ofSeconds(rs.getLong("window_size_seconds")),
+                            Duration.ofSeconds(rs.getLong("shard_size_seconds")),
+                            Duration.ofSeconds(rs.getLong("business_dedup_seconds")),
+                            List.of("customerId", "userId", "eventType")
+                        ),
+                        new StrategyVersion(rs.getInt("version"))
+                    );
+                },
                 strategyId.toString()
             );
             return rows.stream().findFirst();
         });
+    }
+
+    private StrategyScope restoreScope(String strategyId, StrategyScope.Kind kind) {
+        if (kind == StrategyScope.Kind.GLOBAL) {
+            return StrategyScope.global();
+        }
+        List<String> scopeIds = jdbc.query(
+            "select scope_id from strategy_scope_ids where strategy_id = ? and id_kind = ?",
+            (rs, rowNum) -> rs.getString("scope_id"),
+            strategyId, kind.name()
+        );
+        return switch (kind) {
+            case USERS -> StrategyScope.users(scopeIds.stream().map(UserId::new).toArray(UserId[]::new));
+            case USER_GROUPS -> StrategyScope.userGroups(scopeIds.stream().map(UserGroupId::new).toArray(UserGroupId[]::new));
+            case GLOBAL -> StrategyScope.global();
+        };
     }
 
     @Override
@@ -107,6 +128,7 @@ public final class JdbcStrategies implements Strategies {
         }
         jdbc.update("delete from strategy_rule_items where strategy_id = ?", strategy.id().toString());
         persistRuleRows(strategy.id(), strategy.ruleAst());
+        persistScopeIds(strategy);
         try {
             jdbc.update(idempotencyInsertSql(), idempotencyKey.toString(), strategy.id().toString(), fingerprint);
         } catch (DuplicateKeyException ignored) {
@@ -132,6 +154,27 @@ public final class JdbcStrategies implements Strategies {
                     """,
                 strategyId.toString(), row.sortOrder(), row.groupId(), row.connector().name(), row.comparison().field(),
                 row.comparison().operator().name(), valueType(row.comparison().value()), valueJson(row.comparison().value()));
+        }
+    }
+
+    private void persistScopeIds(Strategy strategy) {
+        jdbc.update("delete from strategy_scope_ids where strategy_id = ?", strategy.id().toString());
+        StrategyScope scope = strategy.scope();
+        String kind = scope.kind().name();
+        switch (scope.kind()) {
+            case GLOBAL -> { /* no scope ids */ }
+            case USERS -> {
+                for (UserId userId : scope.userIds()) {
+                    jdbc.update("insert into strategy_scope_ids (strategy_id, id_kind, scope_id) values (?, ?, ?)",
+                        strategy.id().toString(), kind, userId.toString());
+                }
+            }
+            case USER_GROUPS -> {
+                for (UserGroupId groupId : scope.userGroupIds()) {
+                    jdbc.update("insert into strategy_scope_ids (strategy_id, id_kind, scope_id) values (?, ?, ?)",
+                        strategy.id().toString(), kind, groupId.toString());
+                }
+            }
         }
     }
 

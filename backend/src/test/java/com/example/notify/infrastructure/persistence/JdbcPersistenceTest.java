@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.example.notify.domain.event.CustomerId;
 import com.example.notify.domain.event.EventId;
 import com.example.notify.domain.event.EventType;
+import com.example.notify.domain.event.UserGroupId;
 import com.example.notify.domain.event.UserId;
 import com.example.notify.domain.exception.NotificationExceptionRecord;
 import com.example.notify.domain.exception.UserOperationExceptionRecord;
@@ -169,6 +170,33 @@ class JdbcPersistenceTest {
         assertTrue(strategies.find(new StrategyId("strategy-db-group")).orElseThrow().ruleAst() instanceof RuleAst.Group);
         Integer rows = jdbc.queryForObject("select count(*) from strategy_rule_items where strategy_id = ?", Integer.class, "strategy-db-group");
         assertEquals(2, rows);
+    }
+
+    @Test
+    void jdbcStrategiesPersistScopeIds() {
+        JdbcStrategies strategies = new JdbcStrategies(jdbc);
+        Strategy usersStrategy = Strategy.create(
+            new StrategyId("strategy-db-users-scope"),
+            new StrategyName("Users Scope Strategy"),
+            StrategyScope.users(new UserId("user-1"), new UserId("user-2")),
+            new RuleAst.Comparison("eventType", RuleOperator.EQ, "PRODUCT_VIEW"),
+            new StrategyExecutionPlan(Duration.ofSeconds(30), Duration.ofSeconds(10), Duration.ZERO, List.of("customerId", "userId", "eventType"))
+        );
+        Strategy groupsStrategy = Strategy.create(
+            new StrategyId("strategy-db-groups-scope"),
+            new StrategyName("Groups Scope Strategy"),
+            StrategyScope.userGroups(new UserGroupId("group-1")),
+            new RuleAst.Comparison("eventType", RuleOperator.EQ, "PRODUCT_VIEW"),
+            new StrategyExecutionPlan(Duration.ofSeconds(30), Duration.ofSeconds(10), Duration.ZERO, List.of("customerId", "userId", "eventType"))
+        );
+
+        strategies.save(usersStrategy, new IdempotencyKey("idem-db-users-scope"), "fingerprint-users-scope");
+        strategies.save(groupsStrategy, new IdempotencyKey("idem-db-groups-scope"), "fingerprint-groups-scope");
+
+        StrategyScope usersScope = strategies.find(new StrategyId("strategy-db-users-scope")).orElseThrow().scope();
+        StrategyScope groupsScope = strategies.find(new StrategyId("strategy-db-groups-scope")).orElseThrow().scope();
+        assertEquals(List.of(new UserId("user-1"), new UserId("user-2")), usersScope.userIds());
+        assertEquals(List.of(new UserGroupId("group-1")), groupsScope.userGroupIds());
     }
 
     @Test

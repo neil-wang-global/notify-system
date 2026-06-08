@@ -17,6 +17,9 @@ public final class JdbcNotificationExceptions implements NotificationExceptions 
     private final JdbcTemplate jdbc;
 
     public JdbcNotificationExceptions(JdbcTemplate jdbc) {
+        if (jdbc == null) {
+            throw new IllegalArgumentException("jdbcTemplate must not be null");
+        }
         this.jdbc = jdbc;
     }
 

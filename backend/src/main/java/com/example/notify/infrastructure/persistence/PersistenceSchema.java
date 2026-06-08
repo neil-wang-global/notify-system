@@ -63,6 +63,14 @@ public final class PersistenceSchema {
             )
             """);
         jdbc.execute("""
+            create table if not exists strategy_scope_ids (
+                strategy_id varchar(128) not null,
+                id_kind varchar(16) not null,
+                scope_id varchar(128) not null,
+                primary key (strategy_id, id_kind, scope_id)
+            )
+            """);
+        jdbc.execute("""
             create table if not exists strategy_idempotency_keys (
                 idempotency_key varchar(256) primary key,
                 strategy_id varchar(128) not null,

@@ -71,6 +71,25 @@ class JdbcSaveStrategyTest {
         assertThrows(IllegalArgumentException.class, () -> saveStrategy.save(command("strategy-jdbc-stale", "idem-jdbc-stale-3", Optional.of(new StrategyVersion(1)))));
     }
 
+    @Test
+    void idempotencyMismatchIsRejectedAgainstJdbcState() {
+        saveStrategy.save(command("strategy-jdbc-mismatch", "idem-jdbc-mismatch", Optional.empty()));
+
+        SaveStrategy.Command mismatched = new SaveStrategy.Command(
+            new StrategyId("strategy-jdbc-mismatch-other"),
+            new StrategyName("Different Strategy"),
+            StrategyScope.global(),
+            new RuleAst.Comparison("eventType", RuleOperator.EQ, "ORDER_CREATED"),
+            new StrategyExecutionPlan(Duration.ofSeconds(60), Duration.ofSeconds(10), Duration.ZERO, List.of("customerId", "userId", "eventType")),
+            Optional.empty(),
+            new com.example.notify.domain.event.UserToken("token-1"),
+            new IdempotencyKey("idem-jdbc-mismatch"),
+            Instant.parse("2026-06-08T00:00:00Z")
+        );
+
+        assertThrows(IllegalArgumentException.class, () -> saveStrategy.save(mismatched));
+    }
+
     private static SaveStrategy.Command command(String strategyId, String idempotencyKey, Optional<StrategyVersion> expectedVersion) {
         return new SaveStrategy.Command(
             new StrategyId(strategyId),

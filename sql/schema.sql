@@ -46,6 +46,13 @@ create table if not exists strategy_idempotency_keys (
     fingerprint varchar(512) not null
 );
 
+create table if not exists strategy_scope_ids (
+    strategy_id varchar(128) not null references strategies(id),
+    id_kind varchar(16) not null,
+    scope_id varchar(128) not null,
+    primary key (strategy_id, id_kind, scope_id)
+);
+
 create table if not exists notification_records (
     notification_id varchar(128) primary key,
     strategy_id varchar(128) not null,

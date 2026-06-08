@@ -16,6 +16,9 @@ public final class JdbcUserOperationExceptions implements UserOperationException
     private final JdbcTemplate jdbc;
 
     public JdbcUserOperationExceptions(JdbcTemplate jdbc) {
+        if (jdbc == null) {
+            throw new IllegalArgumentException("jdbcTemplate must not be null");
+        }
         this.jdbc = jdbc;
     }
 

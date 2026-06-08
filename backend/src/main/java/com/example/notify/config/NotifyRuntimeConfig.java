@@ -34,8 +34,14 @@ import org.springframework.jdbc.core.JdbcTemplate;
 public class NotifyRuntimeConfig {
 
     @Bean
+    PersistenceSchema persistenceSchema(JdbcTemplate jdbcTemplate) {
+        PersistenceSchema schema = new PersistenceSchema(jdbcTemplate);
+        schema.create();
+        return schema;
+    }
+
+    @Bean
     Strategies strategies(JdbcTemplate jdbcTemplate) {
-        new PersistenceSchema(jdbcTemplate).create();
         return new JdbcStrategies(jdbcTemplate);
     }
 
