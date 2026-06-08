@@ -5,7 +5,6 @@ import RuleEditorPage from './pages/RuleEditorPage.vue';
 import EventSimulatorPage from './pages/EventSimulatorPage.vue';
 import NotificationsPage from './pages/NotificationsPage.vue';
 import ExceptionsPage from './pages/ExceptionsPage.vue';
-import BenchmarkReportPage from './pages/BenchmarkReportPage.vue';
 import SystemMonitorPage from './pages/SystemMonitorPage.vue';
 
 const pages = [
@@ -14,7 +13,6 @@ const pages = [
   ['事件模拟', EventSimulatorPage],
   ['通知记录', NotificationsPage],
   ['异常中心', ExceptionsPage],
-  ['压测结果', BenchmarkReportPage],
   ['系统监控', SystemMonitorPage],
 ];
 
@@ -28,7 +26,7 @@ provide('userToken', userToken);
     <header class="mb-6">
       <p class="text-sm font-semibold text-blue-600">Notify System Console</p>
       <h1 class="text-3xl font-bold">高并发事件通知系统</h1>
-      <p class="mt-2 text-slate-600">策略配置、事件模拟、通知查询、异常补偿和压测展示。</p>
+      <p class="mt-2 text-slate-600">策略配置、事件模拟、通知查询和异常补偿。</p>
       <div class="mt-3 flex items-center gap-2">
         <label class="text-sm text-slate-600">User Token:</label>
         <input

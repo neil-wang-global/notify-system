@@ -55,8 +55,8 @@ public class NotifyRuntimeConfig {
     @Bean @ConditionalOnMissingBean(TimeboxOperations.class) TimeboxOperations inMemoryTimeboxCounter() { return new TimeboxCounter(); }
 
     @Bean
-    StrategiesApi strategiesApi(SaveStrategy saveStrategy, Strategies strategies, CandidateStrategyLookup candidateLookup, NotifyProperties properties) {
-        return new StrategiesApi(saveStrategy, strategies, candidateLookup, properties);
+    StrategiesApi strategiesApi(SaveStrategy saveStrategy, Strategies strategies, CandidateStrategyLookup candidateLookup, NotifyProperties properties, org.springframework.context.ApplicationEventPublisher eventPublisher) {
+        return new StrategiesApi(saveStrategy, strategies, candidateLookup, properties, eventPublisher);
     }
 
     @Bean
@@ -72,10 +72,11 @@ public class NotifyRuntimeConfig {
     @Bean DegradationState degradationState() { return new DegradationState(); }
 
     @Bean
-    StatusApi statusApi(DegradationState degradationState, @Autowired(required = false) org.springframework.kafka.core.KafkaAdmin kafkaAdmin, @Autowired(required = false) StringRedisTemplate redisTemplate) {
+    StatusApi statusApi(DegradationState degradationState, @Autowired(required = false) org.springframework.kafka.core.KafkaAdmin kafkaAdmin, @Autowired(required = false) StringRedisTemplate redisTemplate, CandidateStrategyLookup candidateLookup) {
         Supplier<String> kafkaStatus = () -> { if (kafkaAdmin == null) return "DISABLED"; try { kafkaAdmin.clusterId(); return "RUNNING"; } catch (Exception e) { return "DOWN"; } };
         Supplier<String> redisStatus = () -> { if (redisTemplate == null) return "DISABLED"; try { redisTemplate.getConnectionFactory().getConnection().ping(); return "HEALTHY"; } catch (Exception e) { return "DOWN"; } };
-        return new StatusApi(kafkaStatus, redisStatus, () -> "unknown", degradationState);
+        Supplier<String> strategyCacheVersion = () -> "available";
+        return new StatusApi(kafkaStatus, redisStatus, strategyCacheVersion, degradationState);
     }
 
     @Bean @ConditionalOnBean(StringRedisTemplate.class) RealRedisStrategies realRedisStrategies(StringRedisTemplate redis) { return new RealRedisStrategies(redis); }

@@ -6,6 +6,7 @@ public record Strategy(
     StrategyScope scope,
     RuleAst ruleAst,
     StrategyExecutionPlan executionPlan,
+    int threshold,
     StrategyVersion version
 ) {
 
@@ -25,6 +26,9 @@ public record Strategy(
         if (executionPlan == null) {
             throw new IllegalArgumentException("strategyExecutionPlan must not be null");
         }
+        if (threshold < 1) {
+            throw new IllegalArgumentException("threshold must be at least 1");
+        }
         if (version == null) {
             throw new IllegalArgumentException("strategyVersion must not be null");
         }
@@ -35,18 +39,20 @@ public record Strategy(
         StrategyName name,
         StrategyScope scope,
         RuleAst ruleAst,
-        StrategyExecutionPlan executionPlan
+        StrategyExecutionPlan executionPlan,
+        int threshold
     ) {
-        return new Strategy(id, name, scope, ruleAst, executionPlan, new StrategyVersion(1));
+        return new Strategy(id, name, scope, ruleAst, executionPlan, threshold, new StrategyVersion(1));
     }
 
     public Strategy update(
         StrategyName name,
         StrategyScope scope,
         RuleAst ruleAst,
-        StrategyExecutionPlan executionPlan
+        StrategyExecutionPlan executionPlan,
+        int threshold
     ) {
-        return new Strategy(id, name, scope, ruleAst, executionPlan, version.next());
+        return new Strategy(id, name, scope, ruleAst, executionPlan, threshold, version.next());
     }
 
 }

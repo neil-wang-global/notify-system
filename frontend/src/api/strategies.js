@@ -1,5 +1,13 @@
 import { apiFetch } from './client.js';
 
+export function listStrategies() {
+  return apiFetch('/api/strategies');
+}
+
+export function getStrategy(id) {
+  return apiFetch(`/api/strategies/${encodeURIComponent(id)}`);
+}
+
 export function saveStrategy(data) {
   return apiFetch('/api/strategies', {
     method: 'POST',

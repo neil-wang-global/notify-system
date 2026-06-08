@@ -24,7 +24,7 @@ public final class JdbcUserOperationExceptions implements UserOperationException
 
     @Override
     public void add(UserOperationExceptionRecord record) {
-        jdbc.update("""
+        DataSourceRoleContext.write(() -> jdbc.update("""
                 insert into user_operation_exception_records (
                     id, event_id, customer_id, event_type, payload, failure_reason,
                     retry_count, status, created_at, updated_at
@@ -32,7 +32,7 @@ public final class JdbcUserOperationExceptions implements UserOperationException
                 """,
             record.id(), record.eventId().toString(), record.customerId().toString(), record.eventType().toString(),
             record.payload(), record.failureReason(), record.retryCount(), record.status(),
-            Timestamp.from(record.createdAt()), Timestamp.from(record.updatedAt()));
+            Timestamp.from(record.createdAt()), Timestamp.from(record.updatedAt())));
     }
 
     public List<UserOperationExceptionRecord> list() {

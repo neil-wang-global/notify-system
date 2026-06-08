@@ -45,10 +45,14 @@ public final class PersistenceSchema {
                 window_size_seconds bigint not null,
                 shard_size_seconds bigint not null,
                 business_dedup_seconds bigint not null,
+                dedup_fields_json text,
+                threshold integer not null default 1,
                 version integer not null
             )
             """);
         jdbc.execute("alter table strategies add column if not exists rule_ast_json text");
+        jdbc.execute("alter table strategies add column if not exists threshold integer default 1");
+        jdbc.execute("alter table strategies add column if not exists dedup_fields_json text");
         jdbc.execute("""
             create table if not exists strategy_rule_items (
                 strategy_id varchar(128) not null,

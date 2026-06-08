@@ -100,6 +100,7 @@ class FullNotificationFlowIT extends AbstractIntegrationTest {
                 new RuleAst.Comparison("eventType", com.example.notify.domain.strategy.RuleOperator.EQ, "PRODUCT_VIEW"),
                 new StrategyExecutionPlan(Duration.ofSeconds(30), Duration.ofSeconds(10), Duration.ZERO,
                         List.of("customerId", "userId", "eventType")),
+                2,
                 new StrategyVersion(1));
         boolean accepted = realRedisStrategies.refresh(domainStrategy);
         assertThat(accepted).isTrue();
@@ -210,8 +211,8 @@ class FullNotificationFlowIT extends AbstractIntegrationTest {
         jdbcTemplate.update("""
                 INSERT INTO strategies (
                     id, name, scope_kind, rule_field, rule_operator, rule_value, rule_ast_json,
-                    window_size_seconds, shard_size_seconds, business_dedup_seconds, version
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    window_size_seconds, shard_size_seconds, business_dedup_seconds, threshold, version
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (id) DO UPDATE SET
                     name = excluded.name,
                     scope_kind = excluded.scope_kind,
@@ -222,6 +223,7 @@ class FullNotificationFlowIT extends AbstractIntegrationTest {
                     window_size_seconds = excluded.window_size_seconds,
                     shard_size_seconds = excluded.shard_size_seconds,
                     business_dedup_seconds = excluded.business_dedup_seconds,
+                    threshold = excluded.threshold,
                     version = excluded.version
                 """,
                 STRATEGY_ID.toString(),
@@ -234,6 +236,7 @@ class FullNotificationFlowIT extends AbstractIntegrationTest {
                 30L,
                 10L,
                 0L,
+                2,
                 1);
     }
 }

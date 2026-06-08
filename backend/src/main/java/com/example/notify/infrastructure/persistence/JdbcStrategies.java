@@ -56,7 +56,8 @@ public final class JdbcStrategies implements Strategies {
         return DataSourceRoleContext.read(() -> {
             List<Strategy> rows = jdbc.query("""
                     select id, name, scope_kind, rule_field, rule_operator, rule_value, rule_ast_json,
-                           window_size_seconds, shard_size_seconds, business_dedup_seconds, version
+                           window_size_seconds, shard_size_seconds, business_dedup_seconds, dedup_fields_json,
+                           threshold, version
                     from strategies where id = ?
                     """,
                 (rs, rowNum) -> {
@@ -70,8 +71,9 @@ public final class JdbcStrategies implements Strategies {
                             Duration.ofSeconds(rs.getLong("window_size_seconds")),
                             Duration.ofSeconds(rs.getLong("shard_size_seconds")),
                             Duration.ofSeconds(rs.getLong("business_dedup_seconds")),
-                            List.of("customerId", "userId", "eventType")
+                            parseDedupFields(rs.getString("dedup_fields_json"))
                         ),
+                        rs.getInt("threshold"),
                         new StrategyVersion(rs.getInt("version"))
                     );
                 },
@@ -112,7 +114,7 @@ public final class JdbcStrategies implements Strategies {
 
     @Override
     public void save(Strategy strategy, IdempotencyKey idempotencyKey, String fingerprint) {
-        transaction.executeWithoutResult(status -> saveInTransaction(strategy, idempotencyKey, fingerprint));
+        DataSourceRoleContext.write(() -> transaction.executeWithoutResult(status -> saveInTransaction(strategy, idempotencyKey, fingerprint)));
     }
 
     private void saveInTransaction(Strategy strategy, IdempotencyKey idempotencyKey, String fingerprint) {
@@ -129,6 +131,8 @@ public final class JdbcStrategies implements Strategies {
             strategy.executionPlan().windowSize().toSeconds(),
             strategy.executionPlan().shardSize().toSeconds(),
             strategy.executionPlan().businessDedupWindow().toSeconds(),
+            serializeDedupFields(strategy.executionPlan().dedupFields()),
+            strategy.threshold(),
             strategy.version().value()
         );
         if (changed == 0) {
@@ -191,15 +195,17 @@ public final class JdbcStrategies implements Strategies {
             return """
                 merge into strategies (
                     id, name, scope_kind, rule_field, rule_operator, rule_value, rule_ast_json,
-                    window_size_seconds, shard_size_seconds, business_dedup_seconds, version
-                ) key(id) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    window_size_seconds, shard_size_seconds, business_dedup_seconds, dedup_fields_json,
+                    threshold, version
+                ) key(id) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
         }
         return """
             insert into strategies (
                 id, name, scope_kind, rule_field, rule_operator, rule_value, rule_ast_json,
-                window_size_seconds, shard_size_seconds, business_dedup_seconds, version
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                window_size_seconds, shard_size_seconds, business_dedup_seconds, dedup_fields_json,
+                threshold, version
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             on conflict (id) do update set
                 name = excluded.name,
                 scope_kind = excluded.scope_kind,
@@ -210,6 +216,8 @@ public final class JdbcStrategies implements Strategies {
                 window_size_seconds = excluded.window_size_seconds,
                 shard_size_seconds = excluded.shard_size_seconds,
                 business_dedup_seconds = excluded.business_dedup_seconds,
+                dedup_fields_json = excluded.dedup_fields_json,
+                threshold = excluded.threshold,
                 version = excluded.version
             where strategies.version = excluded.version - 1
             """;
@@ -314,6 +322,25 @@ public final class JdbcStrategies implements Strategies {
             case "not" -> new RuleAst.Not(fromJson((Map<String, Object>) json.get("child")));
             default -> throw new IllegalArgumentException("unknown rule AST type: " + json.get("type"));
         };
+    }
+
+    private static List<String> parseDedupFields(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of("customerId", "userId", "eventType");
+        }
+        try {
+            return JSON.readValue(json, new TypeReference<List<String>>() {});
+        } catch (JsonProcessingException exception) {
+            return List.of("customerId", "userId", "eventType");
+        }
+    }
+
+    private static String serializeDedupFields(List<String> dedupFields) {
+        try {
+            return JSON.writeValueAsString(dedupFields);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalArgumentException("dedup fields could not be serialized", exception);
+        }
     }
 
     private String idempotencyInsertSql() {

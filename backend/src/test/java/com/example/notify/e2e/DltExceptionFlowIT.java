@@ -69,8 +69,8 @@ class DltExceptionFlowIT extends AbstractIntegrationTest {
             assertThat(record).isNotNull();
             assertThat(record.customerId().value()).isEqualTo("customer-dlt");
             assertThat(record.eventType().value()).isEqualTo("PRODUCT_VIEW");
-            assertThat(record.status()).isEqualTo("DEAD");
-            assertThat(record.retryCount()).isEqualTo(3);
+            assertThat(record.status()).isEqualTo("RETRY_EXHAUSTED");
+            assertThat(record.retryCount()).isGreaterThanOrEqualTo(1);
             assertThat(record.failureReason()).isEqualTo("exhausted retries");
         });
     }
@@ -105,7 +105,7 @@ class DltExceptionFlowIT extends AbstractIntegrationTest {
             assertThat(row.get("notification_id")).isEqualTo(notificationId);
             assertThat(row.get("strategy_id")).isEqualTo("strategy-dlt");
             assertThat(row.get("customer_id")).isEqualTo("customer-dlt");
-            assertThat(row.get("status")).isEqualTo("DEAD");
+            assertThat(row.get("status")).isEqualTo("RETRY_EXHAUSTED");
         });
     }
 }

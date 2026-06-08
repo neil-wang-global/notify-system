@@ -18,10 +18,11 @@ public final class RuleAstEvaluator {
     }
 
     private boolean compare(RuleAst.Comparison comparison, EventSnapshot snapshot) {
-        if (comparison.field().startsWith("attributes.")) {
-            throw new IllegalArgumentException("attributes fields are not supported");
+        String fieldName = comparison.field();
+        if (fieldName.startsWith("attributes.")) {
+            fieldName = fieldName.substring("attributes.".length());
         }
-        String actual = snapshot.value(comparison.field());
+        String actual = snapshot.value(fieldName);
         if (comparison.operator() == RuleOperator.EXISTS) {
             return actual != null;
         }

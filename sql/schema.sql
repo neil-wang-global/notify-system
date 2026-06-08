@@ -25,6 +25,8 @@ create table if not exists strategies (
     window_size_seconds bigint not null,
     shard_size_seconds bigint not null,
     business_dedup_seconds bigint not null,
+    dedup_fields_json text,
+    threshold integer not null default 1,
     version integer not null
 );
 

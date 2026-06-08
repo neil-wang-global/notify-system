@@ -38,7 +38,7 @@ onMounted(fetchNotifications);
 
     <div v-if="notifications.length > 0">
       <div class="grid grid-cols-6 gap-2 rounded-lg bg-slate-50 p-3 font-medium text-slate-600">
-        <span>Notification ID</span><span>Strategy</span><span>Customer</span><span>Event Type</span><span>Triggered At</span><span>Count (threshold/current)</span>
+        <span>Notification ID</span><span>Strategy</span><span>Customer</span><span>Event Type</span><span>Triggered At</span><span>Current / Threshold</span>
       </div>
       <div
         v-for="n in notifications"

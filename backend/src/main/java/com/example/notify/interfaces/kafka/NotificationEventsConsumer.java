@@ -61,6 +61,7 @@ public class NotificationEventsConsumer {
             log.debug("acked notification-event notificationId={}", event.notificationId());
         } catch (Exception e) {
             log.error("failed to process notification-event offset={}", record.offset(), e);
+            throw new RuntimeException(e);
         }
     }
 

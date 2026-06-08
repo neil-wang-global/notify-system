@@ -29,29 +29,31 @@ public final class JdbcNotificationRecords implements NotificationRecords {
     @Override
     public boolean addIfAbsent(NotificationRecord record) {
         NotificationEvent event = record.event();
-        try {
-            jdbc.update("""
-                    insert into notification_records (
-                        notification_id, strategy_id, customer_id, user_id, event_id, event_type,
-                        triggered_at, window_value, threshold_value, current_count, dedupe_key
-                    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                record.notificationId().toString(),
-                event.strategyId().toString(),
-                event.customerId().toString(),
-                event.userId().toString(),
-                event.eventId().toString(),
-                event.eventType().toString(),
-                Timestamp.from(event.triggeredAt()),
-                event.window(),
-                event.threshold(),
-                event.currentCount(),
-                event.dedupeKey()
-            );
-            return true;
-        } catch (DuplicateKeyException ignored) {
-            return false;
-        }
+        return DataSourceRoleContext.write(() -> {
+            try {
+                jdbc.update("""
+                        insert into notification_records (
+                            notification_id, strategy_id, customer_id, user_id, event_id, event_type,
+                            triggered_at, window_value, threshold_value, current_count, dedupe_key
+                        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                    record.notificationId().toString(),
+                    event.strategyId().toString(),
+                    event.customerId().toString(),
+                    event.userId().toString(),
+                    event.eventId().toString(),
+                    event.eventType().toString(),
+                    Timestamp.from(event.triggeredAt()),
+                    event.window(),
+                    event.threshold(),
+                    event.currentCount(),
+                    event.dedupeKey()
+                );
+                return true;
+            } catch (DuplicateKeyException ignored) {
+                return false;
+            }
+        });
     }
 
     public List<NotificationRecord> list() {

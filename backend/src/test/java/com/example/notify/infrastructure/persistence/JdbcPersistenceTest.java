@@ -129,7 +129,7 @@ class JdbcPersistenceTest {
     void jdbcStrategiesRejectStaleVersionOverwrite() {
         JdbcStrategies strategies = new JdbcStrategies(jdbc);
         Strategy created = strategy("strategy-db-lock", "PRODUCT_VIEW");
-        Strategy updated = created.update(created.name(), created.scope(), created.ruleAst(), created.executionPlan());
+        Strategy updated = created.update(created.name(), created.scope(), created.ruleAst(), created.executionPlan(), created.threshold());
 
         strategies.save(created, new IdempotencyKey("idem-db-lock-1"), "fingerprint-lock-1");
         strategies.save(updated, new IdempotencyKey("idem-db-lock-2"), "fingerprint-lock-2");
@@ -162,7 +162,8 @@ class JdbcPersistenceTest {
             new StrategyName("Grouped Strategy"),
             StrategyScope.global(),
             ast,
-            new StrategyExecutionPlan(Duration.ofSeconds(30), Duration.ofSeconds(10), Duration.ZERO, List.of("customerId", "userId", "eventType"))
+            new StrategyExecutionPlan(Duration.ofSeconds(30), Duration.ofSeconds(10), Duration.ZERO, List.of("customerId", "userId", "eventType")),
+            1
         );
 
         strategies.save(strategy, new IdempotencyKey("idem-db-group"), "fingerprint-group");
@@ -180,14 +181,16 @@ class JdbcPersistenceTest {
             new StrategyName("Users Scope Strategy"),
             StrategyScope.users(new UserId("user-1"), new UserId("user-2")),
             new RuleAst.Comparison("eventType", RuleOperator.EQ, "PRODUCT_VIEW"),
-            new StrategyExecutionPlan(Duration.ofSeconds(30), Duration.ofSeconds(10), Duration.ZERO, List.of("customerId", "userId", "eventType"))
+            new StrategyExecutionPlan(Duration.ofSeconds(30), Duration.ofSeconds(10), Duration.ZERO, List.of("customerId", "userId", "eventType")),
+            1
         );
         Strategy groupsStrategy = Strategy.create(
             new StrategyId("strategy-db-groups-scope"),
             new StrategyName("Groups Scope Strategy"),
             StrategyScope.userGroups(new UserGroupId("group-1")),
             new RuleAst.Comparison("eventType", RuleOperator.EQ, "PRODUCT_VIEW"),
-            new StrategyExecutionPlan(Duration.ofSeconds(30), Duration.ofSeconds(10), Duration.ZERO, List.of("customerId", "userId", "eventType"))
+            new StrategyExecutionPlan(Duration.ofSeconds(30), Duration.ofSeconds(10), Duration.ZERO, List.of("customerId", "userId", "eventType")),
+            1
         );
 
         strategies.save(usersStrategy, new IdempotencyKey("idem-db-users-scope"), "fingerprint-users-scope");
@@ -211,7 +214,8 @@ class JdbcPersistenceTest {
             new StrategyName("Structured Rule Strategy"),
             StrategyScope.global(),
             ast,
-            new StrategyExecutionPlan(Duration.ofSeconds(30), Duration.ofSeconds(10), Duration.ZERO, List.of("customerId", "userId", "eventType"))
+            new StrategyExecutionPlan(Duration.ofSeconds(30), Duration.ofSeconds(10), Duration.ZERO, List.of("customerId", "userId", "eventType")),
+            1
         );
 
         strategies.save(strategy, new IdempotencyKey("idem-db-structured"), "fingerprint-structured");
@@ -275,7 +279,8 @@ class JdbcPersistenceTest {
             new StrategyName("DB Strategy"),
             StrategyScope.global(),
             new RuleAst.Comparison("eventType", RuleOperator.EQ, eventType),
-            new StrategyExecutionPlan(Duration.ofSeconds(30), Duration.ofSeconds(10), Duration.ZERO, List.of("customerId", "userId", "eventType"))
+            new StrategyExecutionPlan(Duration.ofSeconds(30), Duration.ofSeconds(10), Duration.ZERO, List.of("customerId", "userId", "eventType")),
+            1
         );
     }
 

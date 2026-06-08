@@ -50,6 +50,7 @@ class NotifySystemE2ETest {
         Strategy domainStrategy = new Strategy(new StrategyId("strategy-1"), new StrategyName("test"),
             StrategyScope.global(), ast,
             new StrategyExecutionPlan(Duration.ofSeconds(30), Duration.ofSeconds(10), Duration.ZERO, List.of("customerId", "userId", "eventType", "productId")),
+            2,
             new StrategyVersion(1));
         candidateLookup.refresh(domainStrategy);
 

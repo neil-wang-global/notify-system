@@ -37,13 +37,13 @@ class RedisStrategiesTest {
                 new RuleAst.Comparison("eventType", RuleOperator.EQ, "PRODUCT_VIEW"),
                 new RuleAst.Comparison("productId", RuleOperator.EQ, "P001")
             )),
-            new StrategyExecutionPlan(W, S, D, DEDUP), new StrategyVersion(2));
+            new StrategyExecutionPlan(W, S, D, DEDUP), 1, new StrategyVersion(2));
 
         assertTrue(redisStrategies.refresh(strategy));
         Strategy stale = new Strategy(strategyId, new StrategyName("test"),
             StrategyScope.global(),
             new RuleAst.Comparison("eventType", RuleOperator.EQ, "PRODUCT_VIEW"),
-            new StrategyExecutionPlan(W, S, D, DEDUP), new StrategyVersion(1));
+            new StrategyExecutionPlan(W, S, D, DEDUP), 1, new StrategyVersion(1));
         assertFalse(redisStrategies.refresh(stale));
 
         assertEquals(new StrategyExecutionPlan(W, S, D, DEDUP), redisStrategies.plan(strategyId).orElseThrow());
@@ -60,7 +60,7 @@ class RedisStrategiesTest {
         assertTrue(redisStrategies.refresh(new Strategy(strategyId, new StrategyName("test"),
             StrategyScope.userGroups(new UserGroupId("group-1")),
             new RuleAst.Comparison("eventType", RuleOperator.EQ, "PRODUCT_VIEW"),
-            new StrategyExecutionPlan(W, S, D, DEDUP), new StrategyVersion(1))));
+            new StrategyExecutionPlan(W, S, D, DEDUP), 1, new StrategyVersion(1))));
 
         assertTrue(redisStrategies.scopeIndex().groupStrategies(new UserGroupId("group-1")).contains(strategyId));
     }
@@ -75,7 +75,7 @@ class RedisStrategiesTest {
                 new RuleAst.Comparison("eventType", RuleOperator.EQ, "PRODUCT_VIEW"),
                 new RuleAst.Comparison("productId", RuleOperator.EQ, "P001")
             )),
-            new StrategyExecutionPlan(W, S, D, DEDUP), new StrategyVersion(1)));
+            new StrategyExecutionPlan(W, S, D, DEDUP), 1, new StrategyVersion(1)));
 
         assertTrue(redisStrategies.refresh(new Strategy(strategyId, new StrategyName("test"),
             StrategyScope.users(new UserId("user-2")),
@@ -83,7 +83,7 @@ class RedisStrategiesTest {
                 new RuleAst.Comparison("eventType", RuleOperator.EQ, "ORDER_CREATED"),
                 new RuleAst.Comparison("orderId", RuleOperator.EQ, "O001")
             )),
-            new StrategyExecutionPlan(W, S, D, DEDUP), new StrategyVersion(2))));
+            new StrategyExecutionPlan(W, S, D, DEDUP), 1, new StrategyVersion(2))));
 
         assertFalse(redisStrategies.scopeIndex().userStrategies(new UserId("user-1")).contains(strategyId));
         assertFalse(redisStrategies.eventTypeIndex().strategies(new EventType("PRODUCT_VIEW")).contains(strategyId));

@@ -93,7 +93,7 @@ public final class StrategiesApi {
         validate(request);
         SaveStrategy.Result result = saveStrategy.save(command(new StrategyId(request.strategyId()), request, Optional.empty()));
         candidateLookup.refresh(result.strategy());
-        eventPublisher.publishEvent(new StrategySaved(result.strategy().id(), result.strategy().version()));
+        eventPublisher.publishEvent(new StrategySaved(result.strategy().id(), result.strategy().version(), Instant.now()));
         return StrategySaveResponse.from(result);
     }
 
@@ -105,7 +105,7 @@ public final class StrategiesApi {
         }
         SaveStrategy.Result result = saveStrategy.save(command(new StrategyId(strategyId), request, Optional.of(new StrategyVersion(request.expectedVersion()))));
         candidateLookup.refresh(result.strategy());
-        eventPublisher.publishEvent(new StrategySaved(result.strategy().id(), result.strategy().version()));
+        eventPublisher.publishEvent(new StrategySaved(result.strategy().id(), result.strategy().version(), Instant.now()));
         return StrategySaveResponse.from(result);
     }
 
@@ -113,17 +113,31 @@ public final class StrategiesApi {
         RuleAst ruleAst = ruleAst(request);
         Duration windowSize = parseWindowSize(request.windowSize());
         Duration shardSize = properties.window() != null ? properties.window().shardSizeFor(windowSize) : Duration.ofSeconds(10);
+        Duration businessDedupWindow = request.businessDedupWindowSeconds() != null
+            ? Duration.ofSeconds(request.businessDedupWindowSeconds())
+            : defaultBusinessDedupWindow();
+        List<String> dedupFields = request.dedupFields() != null && !request.dedupFields().isEmpty()
+            ? request.dedupFields()
+            : DEFAULT_DEDUP_FIELDS;
         return new SaveStrategy.Command(
             strategyId,
             new StrategyName(request.name()),
             toDomainScope(request.scope()),
             ruleAst,
-            new StrategyExecutionPlan(windowSize, shardSize, DEFAULT_BUSINESS_DEDUP_WINDOW, DEFAULT_DEDUP_FIELDS),
+            new StrategyExecutionPlan(windowSize, shardSize, businessDedupWindow, dedupFields),
+            request.threshold(),
             version,
             new UserToken(request.userToken()),
             new IdempotencyKey(request.idempotencyKey()),
             request.occurredAt() == null ? Instant.now() : request.occurredAt()
         );
+    }
+
+    private Duration defaultBusinessDedupWindow() {
+        if (properties.deduplication() != null && properties.deduplication().defaultWindow() != null) {
+            return properties.deduplication().defaultWindow();
+        }
+        return DEFAULT_BUSINESS_DEDUP_WINDOW;
     }
 
     private Duration parseWindowSize(String windowSize) {
@@ -213,8 +227,17 @@ public final class StrategiesApi {
         int expectedVersion,
         String userToken,
         String idempotencyKey,
-        Instant occurredAt
-    ) {}
+        Instant occurredAt,
+        int threshold,
+        Long businessDedupWindowSeconds,
+        List<String> dedupFields
+    ) {
+        public SaveStrategyRequest {
+            if (threshold < 1) {
+                threshold = 1;
+            }
+        }
+    }
 
     public record ScopeDto(
         StrategyScope.Kind kind,
@@ -246,16 +269,16 @@ public final class StrategiesApi {
         }
     }
 
-    public record StrategyListResponse(String strategyId, String name, String scope, String eventType, int version) {
+    public record StrategyListResponse(String strategyId, String name, String scope, String eventType, int threshold, int version) {
         static StrategyListResponse from(Strategy s) {
             String eventType = s.ruleAst() instanceof RuleAst.Comparison c ? c.field().equals("eventType") ? String.valueOf(c.value()) : "" : "";
-            return new StrategyListResponse(s.id().toString(), s.name().value(), s.scope().kind().name(), eventType, s.version().value());
+            return new StrategyListResponse(s.id().toString(), s.name().value(), s.scope().kind().name(), eventType, s.threshold(), s.version().value());
         }
     }
 
-    public record StrategyDetailResponse(String strategyId, String name, String scope, int version, Object ruleAst, String executionPlan) {
+    public record StrategyDetailResponse(String strategyId, String name, String scope, int threshold, int version, Object ruleAst, String executionPlan) {
         static StrategyDetailResponse from(Strategy s) {
-            return new StrategyDetailResponse(s.id().toString(), s.name().value(), s.scope().kind().name(), s.version().value(), s.ruleAst(), s.executionPlan().toString());
+            return new StrategyDetailResponse(s.id().toString(), s.name().value(), s.scope().kind().name(), s.threshold(), s.version().value(), s.ruleAst(), s.executionPlan().toString());
         }
     }
 

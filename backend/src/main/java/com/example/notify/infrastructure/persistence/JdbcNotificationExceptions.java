@@ -25,7 +25,7 @@ public final class JdbcNotificationExceptions implements NotificationExceptions 
 
     @Override
     public void add(NotificationExceptionRecord record) {
-        jdbc.update("""
+        DataSourceRoleContext.write(() -> jdbc.update("""
                 insert into notification_exception_records (
                     id, notification_id, strategy_id, customer_id, event_id, payload,
                     failure_reason, retry_count, status, created_at, updated_at
@@ -33,7 +33,7 @@ public final class JdbcNotificationExceptions implements NotificationExceptions 
                 """,
             record.id(), record.notificationId().toString(), record.strategyId().toString(), record.customerId().toString(),
             record.eventId().toString(), record.payload(), record.failureReason(), record.retryCount(), record.status(),
-            Timestamp.from(record.createdAt()), Timestamp.from(record.updatedAt()));
+            Timestamp.from(record.createdAt()), Timestamp.from(record.updatedAt())));
     }
 
     public List<NotificationExceptionRecord> list() {

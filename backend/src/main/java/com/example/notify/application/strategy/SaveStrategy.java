@@ -59,14 +59,14 @@ public final class SaveStrategy {
             if (command.expectedVersion().isPresent()) {
                 throw new IllegalArgumentException("new strategy must not include expected version");
             }
-            return Strategy.create(command.strategyId(), command.name(), command.scope(), command.ruleAst(), command.executionPlan());
+            return Strategy.create(command.strategyId(), command.name(), command.scope(), command.ruleAst(), command.executionPlan(), command.threshold());
         }
 
         Strategy current = existing.get();
         if (command.expectedVersion().isEmpty() || !current.version().equals(command.expectedVersion().get())) {
             throw new IllegalArgumentException("strategy version conflict");
         }
-        return current.update(command.name(), command.scope(), command.ruleAst(), command.executionPlan());
+        return current.update(command.name(), command.scope(), command.ruleAst(), command.executionPlan(), command.threshold());
     }
 
     public record Command(
@@ -75,6 +75,7 @@ public final class SaveStrategy {
         StrategyScope scope,
         RuleAst ruleAst,
         StrategyExecutionPlan executionPlan,
+        int threshold,
         Optional<StrategyVersion> expectedVersion,
         UserToken userToken,
         IdempotencyKey idempotencyKey,
@@ -88,10 +89,13 @@ public final class SaveStrategy {
             if (expectedVersion == null || userToken == null || idempotencyKey == null || occurredAt == null) {
                 throw new IllegalArgumentException("strategy save command metadata is incomplete");
             }
+            if (threshold < 1) {
+                throw new IllegalArgumentException("threshold must be at least 1");
+            }
         }
 
         private String fingerprint() {
-            return strategyId + "|" + name + "|" + scope + "|" + ruleAst + "|" + executionPlan + "|" + expectedVersion;
+            return strategyId + "|" + name + "|" + scope + "|" + ruleAst + "|" + executionPlan + "|" + threshold + "|" + expectedVersion;
         }
 
     }

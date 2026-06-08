@@ -11,7 +11,7 @@ test('strategies page loads and shows form', async ({ page }) => {
 test('notifications page loads', async ({ page }) => {
   await page.goto('/');
   await page.click('text=通知记录');
-  await expect(page.locator('table, [class*="card"]').first()).toBeVisible();
+  await expect(page.locator('.grid, .text-slate-400').first()).toBeVisible();
 });
 
 test('system monitor loads', async ({ page }) => {

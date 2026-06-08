@@ -23,13 +23,28 @@ public record RedisStrategy(
 
     public static RedisStrategy from(Strategy strategy) {
         if (strategy == null) { throw new IllegalArgumentException("strategy must not be null"); }
+        EventType extracted = extractEventType(strategy.ruleAst());
+        if (extracted == null) { extracted = new EventType("UNKNOWN"); }
         return new RedisStrategy(strategy.id(), strategy.version(), strategy.executionPlan(),
-            strategy.scope(), extractEventType(strategy.ruleAst()), extractFieldIndexes(strategy.ruleAst()));
+            strategy.scope(), extracted, extractFieldIndexes(strategy.ruleAst()));
     }
 
     private static EventType extractEventType(RuleAst ast) {
-        RuleAst.Comparison first = firstComparison(ast);
-        return "eventType".equals(first.field()) ? new EventType(String.valueOf(first.value())) : new EventType("UNKNOWN");
+        return switch (ast) {
+            case RuleAst.Comparison c when "eventType".equals(c.field()) ->
+                new EventType(String.valueOf(c.value()));
+            case RuleAst.Comparison c ->
+                null;
+            case RuleAst.Group g -> {
+                EventType result = null;
+                for (RuleAst child : g.children()) {
+                    result = extractEventType(child);
+                    if (result != null) break;
+                }
+                yield result;
+            }
+            case RuleAst.Not n -> extractEventType(n.child());
+        };
     }
 
     private static List<RedisFieldIndex> extractFieldIndexes(RuleAst ast) {
@@ -50,11 +65,4 @@ public record RedisStrategy(
         }
     }
 
-    private static RuleAst.Comparison firstComparison(RuleAst ast) {
-        return switch (ast) {
-            case RuleAst.Comparison c -> c;
-            case RuleAst.Group g -> firstComparison(g.children().getFirst());
-            case RuleAst.Not n -> firstComparison(n.child());
-        };
-    }
 }

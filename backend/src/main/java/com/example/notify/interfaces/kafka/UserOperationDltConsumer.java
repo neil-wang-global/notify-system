@@ -7,14 +7,17 @@ import com.example.notify.domain.exception.UserOperationExceptionRecord;
 import com.example.notify.domain.exception.UserOperationExceptions;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.UUID;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.common.header.Header;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
+import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -42,6 +45,9 @@ public class UserOperationDltConsumer {
             String customerId = root.path("customerId").asText();
             String eventType = root.path("eventType").asText();
 
+            int retryCount = readDeliveryAttempt(record);
+            String failureReason = readFailureReason(record);
+
             Instant now = Instant.now();
             UserOperationExceptionRecord exceptionRecord = new UserOperationExceptionRecord(
                 UUID.randomUUID().toString(),
@@ -49,9 +55,9 @@ public class UserOperationDltConsumer {
                 new CustomerId(customerId),
                 new EventType(eventType),
                 record.value(),
-                "exhausted retries",
-                3,
-                "DEAD",
+                failureReason,
+                retryCount,
+                "RETRY_EXHAUSTED",
                 now,
                 now
             );
@@ -62,6 +68,41 @@ public class UserOperationDltConsumer {
         } catch (Exception e) {
             log.error("failed to process user-operation DLT message offset={}", record.offset(), e);
         }
+    }
+
+    private int readDeliveryAttempt(ConsumerRecord<?, ?> record) {
+        Header header = record.headers().lastHeader(KafkaHeaders.DELIVERY_ATTEMPT);
+        if (header != null) {
+            try {
+                return Integer.parseInt(new String(header.value(), StandardCharsets.UTF_8));
+            } catch (NumberFormatException e) {
+                log.warn("failed to parse delivery-attempt header, using default", e);
+            }
+        }
+        // Fallback: check for the raw header name in case the constant doesn't match
+        Header rawHeader = record.headers().lastHeader("kafka_delivery-attempt");
+        if (rawHeader != null) {
+            try {
+                return Integer.parseInt(new String(rawHeader.value(), StandardCharsets.UTF_8));
+            } catch (NumberFormatException e) {
+                log.warn("failed to parse raw kafka_delivery-attempt header, using default", e);
+            }
+        }
+        return 1;
+    }
+
+    private String readFailureReason(ConsumerRecord<?, ?> record) {
+        Header origTopic = record.headers().lastHeader(KafkaHeaders.ORIGINAL_TOPIC);
+        if (origTopic != null) {
+            String topic = new String(origTopic.value(), StandardCharsets.UTF_8);
+            return "exhausted retries from topic " + topic;
+        }
+        Header rawOrigTopic = record.headers().lastHeader("kafka_original-topic");
+        if (rawOrigTopic != null) {
+            String topic = new String(rawOrigTopic.value(), StandardCharsets.UTF_8);
+            return "exhausted retries from topic " + topic;
+        }
+        return "exhausted retries";
     }
 
 }

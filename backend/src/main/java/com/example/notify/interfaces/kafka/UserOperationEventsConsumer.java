@@ -66,7 +66,7 @@ public class UserOperationEventsConsumer {
     }
 
     private static ProcessUserOperationEvent.MatchedStrategy toStrategy(Strategy s) {
-        return new ProcessUserOperationEvent.MatchedStrategy(s.id(), s.ruleAst(), s.executionPlan(), 1);
+        return new ProcessUserOperationEvent.MatchedStrategy(s.id(), s.ruleAst(), s.executionPlan(), s.threshold());
     }
 
     @SuppressWarnings("unchecked")

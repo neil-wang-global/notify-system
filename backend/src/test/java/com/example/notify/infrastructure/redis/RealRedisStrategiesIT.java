@@ -180,6 +180,6 @@ class RealRedisStrategiesIT {
     private Strategy makeStrategy(StrategyId id, int version, StrategyScope scope, RuleAst ast) {
         return new Strategy(id, new StrategyName("test"), scope, ast,
             new StrategyExecutionPlan(W, S, D, List.of("customerId", "userId", "eventType")),
-            new StrategyVersion(version));
+            1, new StrategyVersion(version));
     }
 }

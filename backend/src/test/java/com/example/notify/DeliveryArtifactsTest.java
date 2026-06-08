@@ -18,7 +18,6 @@ class DeliveryArtifactsTest {
         assertTrue(Files.exists(ROOT.resolve("frontend/src/pages/EventSimulatorPage.vue")));
         assertTrue(Files.exists(ROOT.resolve("frontend/src/pages/NotificationsPage.vue")));
         assertTrue(Files.exists(ROOT.resolve("frontend/src/pages/ExceptionsPage.vue")));
-        assertTrue(Files.exists(ROOT.resolve("frontend/src/pages/BenchmarkReportPage.vue")));
         assertTrue(Files.exists(ROOT.resolve("frontend/src/pages/SystemMonitorPage.vue")));
     }
 

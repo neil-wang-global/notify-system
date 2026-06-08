@@ -35,6 +35,12 @@ function statusColor(value) {
   if (v === 'DISABLED') return 'slate';
   return 'rose';
 }
+
+const statusClasses = {
+  emerald: 'bg-emerald-50 text-emerald-700',
+  rose: 'bg-rose-50 text-rose-700',
+  slate: 'bg-slate-50 text-slate-700',
+};
 </script>
 
 <template>
@@ -47,10 +53,10 @@ function statusColor(value) {
     <div v-if="error" class="rounded-lg bg-rose-50 p-3 text-rose-600">Error: {{ error }}</div>
 
     <ul v-if="status" class="space-y-2">
-      <li :class="['rounded-lg p-3', `bg-${statusColor(status.kafka)}-50`, `text-${statusColor(status.kafka)}-700`]">
+      <li :class="['rounded-lg p-3', statusClasses[statusColor(status.kafka)]]">
         Kafka consumer: {{ status.kafka }}
       </li>
-      <li :class="['rounded-lg p-3', `bg-${statusColor(status.redis)}-50`, `text-${statusColor(status.redis)}-700`]">
+      <li :class="['rounded-lg p-3', statusClasses[statusColor(status.redis)]]">
         Redis cluster: {{ status.redis }}
       </li>
       <li class="rounded-lg bg-slate-50 p-3 text-slate-700">
